@@ -1,0 +1,4 @@
+Flask>=3.1,<4
+openpyxl>=3.1,<4
+waitress>=3,<4
+plotly>=6,<7

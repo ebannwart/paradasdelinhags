@@ -1,0 +1,126 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="csrf-token" content="{{ csrf }}">
+  <title>Paradas de Linha · Análise operacional</title>
+  <link rel="stylesheet" href="{{ url_for('static',filename='app.css') }}">
+  <script defer src="/vendor/plotly.js"></script>
+  <script defer src="{{ url_for('static',filename='app.js') }}"></script>
+</head>
+<body>
+<aside class="sidebar">
+  <a class="brand" href="/" aria-label="Paradas de Linha"><span class="brand-icon">▥</span><span>Paradas<span class="brand-sub">DE LINHA</span></span></a>
+  <div class="nav-label">ESPAÇO DE ANÁLISE</div>
+  <nav aria-label="Navegação principal">
+    <button class="nav active" data-view="dashboard"><span>▤</span> Visão geral</button>
+    <button class="nav" data-view="maintenance"><span>◷</span> KPI manutenção</button>
+    <button class="nav" data-view="records"><span>☷</span> Lançamentos</button>
+    <button class="nav" data-view="offenders"><span>◎</span> Ofensores</button>
+    <button class="nav" data-view="files"><span>▱</span> Arquivos e ajustes</button>
+  </nav>
+  <div class="sidebar-bottom"><span class="status-dot"></span> Uso local <p>Seus dados neste computador.</p><a href="/api/backup">Baixar cópia de segurança ↗</a></div>
+</aside>
+<main>
+  <header class="page-header"><div><div class="eyebrow">INTELIGÊNCIA OPERACIONAL</div><h1 id="page-title">Visão geral</h1><p id="page-description">Entenda as paradas. Encontre as recorrências.</p></div><button class="button secondary" id="export">↓ Exportar dados filtrados</button></header>
+  <section id="filters-panel" class="panel filters" aria-label="Filtros da análise">
+    <div class="section-line"><h2>Recorte da análise</h2><button class="text-button" id="clear-filters">Limpar filtros</button></div>
+    <form id="filters-form">
+      <div class="filter-grid">
+        <label>Anos<select id="f-year" multiple aria-label="Anos"></select></label>
+        <label>Modalidades<select id="f-modality" multiple aria-label="Modalidades"></select></label>
+        <label>Equipamentos<select id="f-equipment" multiple aria-label="Equipamentos"></select></label>
+        <label>Ofensores<select id="f-offender" multiple aria-label="Ofensores"></select></label>
+        <label class="search-label">Buscar na descrição<input id="f-text" placeholder="Ex.: tesoura sensor" type="search"><span class="field-help">Todas as palavras, sem diferenciar acentos.</span></label>
+      </div>
+      <details class="more-filters"><summary>Mais filtros: responsável, datas, duração e arquivos</summary>
+        <div class="filter-grid advanced">
+          <label>Meses<select id="f-month" multiple aria-label="Meses"></select></label>
+          <label>Responsáveis originais agrupados<select id="f-responsible" multiple aria-label="Responsáveis"></select></label>
+          <label>Arquivos da análise<select id="f-files" multiple aria-label="Arquivos da análise"></select></label>
+          <label>Data inicial<input type="date" id="f-date_from"></label>
+          <label>Data final<input type="date" id="f-date_to"></label>
+          <label>Mínimo (min)<input type="number" min="0" step="any" id="f-min_minutes" placeholder="0"></label>
+          <label>Máximo (min)<input type="number" min="0" step="any" id="f-max_minutes" placeholder="Sem limite"></label>
+        </div><label class="check-label"><input id="f-overlap" type="checkbox"> Apenas lançamentos com sobreposição</label>
+      </details>
+      <div class="filter-footer"><span>Sem seleção = todos. Use Ctrl para selecionar vários itens.</span><button class="button primary" type="submit">Aplicar filtros <span>→</span></button></div>
+    </form>
+    <div id="active-filters" class="active-filters" aria-live="polite"></div>
+  </section>
+
+  <section id="view-dashboard" class="view">
+    <div class="section-line overview-line"><h2>Indicadores do período</h2><span id="date-range" class="muted"></span></div>
+    <div class="kpis">
+      <article class="kpi"><span>Tempo de parada</span><strong id="kpi-minutes">—</strong><small id="kpi-hours">minutos registrados</small></article>
+      <article class="kpi"><span>Eventos de parada</span><strong id="kpi-events">—</strong><small>sequências por equipamento</small></article>
+      <article class="kpi"><span>Lançamentos</span><strong id="kpi-records">—</strong><small>registros individuais filtrados</small></article>
+      <article class="kpi accent"><span>Minutos sem ofensor</span><strong id="kpi-unclassified">—</strong><button class="text-button" id="classify-unassigned">Classificar lançamentos ↗</button></article>
+    </div>
+    <div id="analysis-notice" class="notice"></div>
+    <div class="chart-grid">
+      <article class="panel chart-card wide pareto-feature"><div class="section-line"><div><span class="eyebrow">PRIORIDADES DO PERÍODO</span><h2>Principais ofensores</h2><p>Até 15 categorias · barras em ordem decrescente e percentual acumulado</p></div><div class="chart-controls"><label class="compact-label">Medida do Pareto<select id="pareto-metric"><option value="minutes">Tempo total (min)</option><option value="events">Quantidade de paradas</option></select></label><label class="check-label"><input id="pareto-labels" type="checkbox" checked> Mostrar valores nas barras</label></div></div><div class="pareto-scroll"><div id="chart-offenders" class="chart"></div></div><p id="pareto-note" class="field-help"></p></article>
+      <article class="panel chart-card wide"><div class="section-line"><div><h2>Heatmap dos ofensores</h2><p id="heatmap-note">Ofensores por mês · ordenados pelo último mês</p></div><label class="compact-label">Agrupar colunas<select id="heatmap-group"><option value="month">Por mês</option><option value="year">Por ano</option></select></label><label class="compact-label">Medida do heatmap<select id="heatmap-metric"><option value="minutes">Tempo total (min)</option><option value="events">Quantidade de paradas</option></select></label></div><div class="heatmap-scroll"><div id="chart-heatmap" class="chart"></div></div><p class="field-help">Colunas por mês ou ano, respeitando os filtros aplicados. Ofensores ordenados pelo último período com dados. Zero indica ausência de paradas no recorte em um período com dados na fonte; lacunas indicam períodos sem dados na fonte. A quantidade anual conta eventos distintos, sem duplicar eventos presentes em mais de um mês. Clique em uma célula para consultar os lançamentos.</p></article>
+      <article class="panel chart-card wide"><div class="section-line"><div><h2>Evolução das paradas</h2><p>Histórico contínuo por ano e mês</p></div><label class="compact-label">Medida<select id="metric"><option value="minutes">Minutos</option><option value="events">Eventos</option><option value="records">Lançamentos</option></select></label></div><div id="chart-timeline" class="chart"></div></article>
+      <article class="panel chart-card wide"><div class="section-line"><div><h2>Composição das paradas</h2><p>Minutos por período e categoria</p></div><label class="compact-label">Agrupar por<select id="stack"><option value="modality">Modalidade</option><option value="offender">Ofensor</option></select></label></div><div id="chart-stack" class="chart"></div></article>
+      <article class="panel chart-card wide"><div class="section-line"><div><h2>Por equipamento</h2><p>Comparação no recorte selecionado</p></div></div><div id="chart-equipment" class="chart"></div></article>
+    </div>
+    <p class="footnote">Clique nas barras para consultar os lançamentos. Minutos são somados conforme o Excel. Eventos com diferentes ofensores podem aparecer em mais de uma categoria; suas frequências não devem ser somadas.</p>
+  </section>
+
+  <section id="view-maintenance" class="view" hidden>
+    <section class="panel padded maintenance-controls">
+      <form id="maintenance-form"><label>Linha<select id="maintenance-equipment" aria-label="Linha dos indicadores" required></select></label><label>Arquivos da análise<select id="maintenance-files" multiple aria-label="Arquivos dos indicadores"></select><span class="field-help">Sem seleção = todos os arquivos importados.</span></label><button class="button primary" type="submit">Atualizar indicadores</button></form>
+      <p class="field-help">O histórico anual usa as fontes selecionadas. À direita, os meses do ano mais recente dessas fontes. Estes indicadores usam todos os lançamentos da linha, sem os filtros de descrição ou ofensor da visão geral.</p>
+    </section>
+    <div id="maintenance-context" class="notice" aria-live="polite"></div>
+    <section class="panel padded target-panel">
+      <div class="section-line"><div><h2>Metas da linha <span id="target-equipment">—</span></h2><p class="muted">Uma meta por indicador e por linha, aplicada aos gráficos anual e mensal.</p></div><span class="badge">SALVAS NESTE COMPUTADOR</span></div>
+      <form id="targets-form"><fieldset id="targets-fields"><label>IMC máximo (%)<input id="target-imc" type="number" min="0" max="100" step="any" placeholder="Sem meta"></label><label>DGFM mínimo (%)<input id="target-dgfm" type="number" min="0" max="100" step="any" placeholder="Sem meta"></label><label>MTBF mínimo (h)<input id="target-mtbf" type="number" min="0" step="any" placeholder="Sem meta"></label><label>MTTR máximo (min)<input id="target-mttr" type="number" min="0" step="any" placeholder="Sem meta"></label><label>Eventos máximos/mês<input id="target-failure_events" type="number" min="0" step="any" placeholder="Sem meta"></label><button class="button primary" type="submit">Salvar metas</button></fieldset></form>
+      <p class="field-help">A linha pontilhada representa a meta. Campos vazios removem a meta do indicador desta linha. Para DGFM e MTBF, maior é melhor; para IMC, MTTR e eventos de falha, menor é melhor.</p>
+    </section>
+    <div id="maintenance-charts"></div>
+    <p class="footnote">* Período parcial. Barras ausentes representam valores indisponíveis. Verde indica meta atendida; terracota indica resultado fora da meta. Sem meta, cada indicador usa sua própria cor.</p>
+    <details class="panel padded methodology" open><summary>Como calculamos os indicadores</summary>
+      <div class="formula-definitions"><p><strong>T = tempo calendário:</strong> 24 × 60 minutos por dia, incluindo sábados, domingos e feriados. Os limites são os dias abrangidos pelas datas de início das fontes selecionadas, do início do primeiro dia ao fim do último dia. Não usamos somente o intervalo entre a primeira e a última falha da linha.</p>
+      <p><strong>C = minutos de ME + MM.</strong> <strong>P = minutos de Preventiva</strong> (manutenção preventiva + reparo geral). <strong>N = eventos distintos com minutos de ME ou MM</strong>, agrupados pela tolerância cadastrada em Arquivos e ajustes. ME e MM no mesmo evento contam como uma falha.</p>
+      <p><strong>IMC = [C / T] × 100.</strong> Percentual do tempo calendário perdido em paradas corretivas (ME + MM). Quanto menor, melhor.</p>
+      <p><strong>DGFM = [1 − (C + P) / T] × 100.</strong> Disponibilidade descontando corretivas, preventivas e reparo geral.</p>
+      <p><strong>MTBF = (T − C) / N / 60 horas.</strong> Usa o tempo calendário sem paradas corretivas por evento de falha. Inclui os tempos de OP, ST, PP, EX e Preventiva nessa base; não representa horas efetivas de produção.</p>
+      <p><strong>MTTR = C / N minutos.</strong> Tempo médio de parada corretiva registrado por evento; não mede somente o tempo de trabalho da equipe.</p>
+      <p><strong>Eventos de falha:</strong> no histórico anual, N do ano ÷ número de meses com lançamentos da linha. No gráfico mensal, N de cada mês. Meses com dados e sem falhas contam no divisor e exibem zero; meses sem dados ficam indisponíveis. Um mês parcial conta como um mês, sem extrapolação. O divisor aparece ao passar o mouse e na memória de cálculo. Um evento que atravessa meses conta em cada mês atingido, mas somente uma vez no total anual; por isso, a média anual pode diferir da média das barras mensais.</p>
+      <p><strong>Meses e anos:</strong> os minutos informados no Excel são rateados proporcionalmente ao intervalo de cada lançamento quando ele atravessa meses ou os limites da cobertura. Os totais anuais usam somas de minutos e eventos distintos do ano, nunca média simples dos índices mensais. Um evento que atravessa meses pode aparecer nos dois meses, mas é contado uma vez no ano.</p>
+      <p><strong>Cobertura:</strong> meses sem lançamentos da linha ficam sem índice, sem presumir 100% de disponibilidade. O anual considera apenas os meses com dados da linha e informa quando é parcial. A cobertura é inferida pelas datas dos arquivos; presença de registros não comprova completude. Uma linha em regime diferente de 24×7 precisa de outra base de cálculo.</p>
+      <p><strong>Sem falhas:</strong> N = 0 deixa MTBF e MTTR indisponíveis. Sobreposições são sinalizadas; os minutos originais não são corrigidos automaticamente. Se as paradas consideradas excederem T, o percentual correspondente fica indisponível.</p></div>
+      <div id="modality-legend" class="modality-legend"></div>
+    </details>
+    <section class="panel padded audit-panel"><div class="section-line"><div><h2>Memória de cálculo</h2><p class="muted">Confira o denominador, as modalidades e a quantidade de eventos em cada período.</p></div></div><div class="table-wrap"><table><thead><tr><th>Período</th><th>Calendário (h)</th><th>ME (min)</th><th>MM (min)</th><th>Preventiva (min)</th><th>OP (min)</th><th>ST (min)</th><th>PP (min)</th><th>EX (min)</th><th>Falhas</th><th>Eventos/mês</th><th>Observações</th></tr></thead><tbody id="maintenance-audit"></tbody></table></div></section>
+  </section>
+
+  <section id="view-records" class="view" hidden>
+    <div class="section-line"><div><h2>Lançamentos de parada</h2><p id="records-count" class="muted"></p></div><button id="new-offender-quick" class="button secondary">+ Criar ofensor</button></div>
+    <div class="panel bulk-bar"><div><strong id="selection-count">Nenhum selecionado</strong><div><button id="select-all-results" class="text-button">Selecionar todos os resultados filtrados</button><button id="clear-selection" class="text-button">Limpar seleção</button></div></div><label>Ofensor<select id="bulk-offender" aria-label="Ofensor para os selecionados"></select></label><button id="assign-offender" class="button primary">Aplicar ofensor</button><details class="bulk-type"><summary>Corrigir tipo</summary><select id="bulk-type" aria-label="Tipo para os selecionados"><option value="">Detecção automática</option><option>Demais paradas</option><option>Manutenção Preventiva</option><option>Reparo Geral</option></select><button class="button secondary" id="assign-type">Aplicar tipo</button></details></div>
+    <div class="panel table-wrap"><table class="records-table"><thead><tr><th><input id="select-page" type="checkbox" aria-label="Selecionar a página atual"></th><th>Equipamento / início</th><th>Minutos</th><th>Modalidade / motivo</th><th>Observação</th><th>Ofensor</th><th></th></tr></thead><tbody id="records-body"></tbody></table></div>
+    <div class="pagination"><span id="page-info"></span><div><button id="previous-page" class="button secondary">← Anterior</button><button id="next-page" class="button secondary">Próxima →</button></div></div>
+  </section>
+
+  <section id="view-offenders" class="view" hidden>
+    <div class="section-line"><div><h2>Seu catálogo de ofensores</h2><p class="muted">Crie categorias para acompanhar problemas recorrentes.</p></div><button id="new-offender" class="button primary">+ Novo ofensor</button></div>
+    <div id="offenders-list" class="offenders-grid"></div>
+  </section>
+
+  <section id="view-files" class="view" hidden>
+    <div class="files-grid"><article class="panel padded"><h2>Arquivos na pasta do projeto</h2><p class="muted">Selecione os anos que deseja importar. Depois, use os filtros para escolher as fontes da análise.</p><div id="local-files" class="local-files"></div><div class="actions"><button id="select-local-all" class="text-button">Marcar todos</button><button id="import-local" class="button primary">Importar selecionados</button></div></article>
+    <article class="panel padded"><h2>Adicionar outros arquivos</h2><p class="muted">Selecione um ou vários arquivos Excel (.xlsx).</p><label class="upload-box">↑ Escolher arquivos<input type="file" id="uploads" accept=".xlsx" multiple></label><button id="import-upload" class="button primary">Importar arquivos escolhidos</button><p class="field-help">Até 100 MB por envio. Reimportar o mesmo arquivo mantém as classificações de registros que não mudaram.</p></article></div>
+    <div id="import-progress" class="panel padded" hidden aria-live="polite"></div>
+    <article class="panel padded imported-panel"><h2>Arquivos importados</h2><div class="table-wrap"><table><thead><tr><th>Arquivo</th><th>Período observado</th><th>Linhas válidas</th><th>Duplicadas¹</th><th>Inválidas</th><th></th></tr></thead><tbody id="files-body"></tbody></table></div><p class="field-help">¹ Duplicatas encontradas na importação, dentro do arquivo ou em outra fonte. Cada lançamento idêntico é contado apenas uma vez na análise.</p></article>
+    <article class="panel padded settings"><h2>Como os eventos são agrupados</h2><p>Lançamentos do mesmo equipamento são unidos quando se sobrepõem ou quando o próximo começa dentro da tolerância após o fim anterior. Motivos e responsáveis são preservados.</p><form id="settings-form"><label>Intervalo máximo (minutos)<input id="tolerance" type="number" min="0" max="60" step="0.1" value="1" required></label><button class="button secondary" type="submit">Salvar e reagrupar eventos</button></form><p class="field-help">Sobreposições são sinalizadas. O tempo informado no Excel continua sendo a medida dos gráficos. Datas dos filtros usam o início do lançamento, inclusive quando a parada atravessa dias ou meses.</p></article>
+  </section>
+</main>
+
+<dialog id="offender-dialog"><form id="offender-form"><div class="section-line"><h2 id="offender-dialog-title">Novo ofensor</h2><button type="button" class="close-dialog icon-button" aria-label="Fechar">×</button></div><input id="offender-id" type="hidden"><label>Nome<input id="offender-name" maxlength="120" required placeholder="Ex.: Falha no sensor de entrada"></label><label>Descrição<textarea id="offender-description" rows="3" maxlength="2000" placeholder="Como reconhecer esse problema"></textarea></label><label>Equipamentos de referência<select id="offender-equipment" multiple></select><span class="field-help">Opcional. Indica onde o ofensor costuma ocorrer; não bloqueia outras classificações.</span></label><label>Cor<input id="offender-color" type="color" value="#147d75"></label><div class="actions"><button type="button" class="button secondary close-dialog">Cancelar</button><button class="button primary" type="submit">Salvar ofensor</button></div></form></dialog>
+<dialog id="detail-dialog" class="detail-dialog"><div class="section-line"><h2>Detalhes do lançamento</h2><button class="close-dialog icon-button" aria-label="Fechar">×</button></div><div id="detail-content"></div></dialog>
+<dialog id="issues-dialog"><div class="section-line"><h2>Validação do arquivo</h2><button class="close-dialog icon-button" aria-label="Fechar">×</button></div><div id="issues-content"></div></dialog>
+<div id="toast" role="status" aria-live="polite" hidden></div>
+<div id="loading" class="loading" hidden><span></span> Atualizando…</div>
+</body></html>
