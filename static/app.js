@@ -107,6 +107,12 @@ function plot(id,traces,layout={},onClick=null) {
   delete base.emptyMessage;
   Plotly.react(id,traces,base,{responsive:true,displaylogo:false,modeBarButtonsToRemove:['lasso2d','select2d'],toImageButtonOptions:{format:'png',filename:id,width:1400,height:600}}).then(()=>{
     const target=$(id); target.removeAllListeners('plotly_click'); if(onClick) target.on('plotly_click',run(e=>onClick(e.points[0])));
+    if(id.startsWith('maintenance-imc-')&&onClick)target.onclick=run(e=>{
+      const tick=e.target.closest('.xtick');
+      if(!tick)return;
+      const index=traces[0].x.indexOf(tick.textContent);
+      if(index>=0)onClick({customdata:traces[0].customdata[index]});
+    });
   });
 }
 async function drill(extra) {filters={...filters,...extra};writeFilters();page=1;clearSelection();await showView('records');}
@@ -250,7 +256,7 @@ function renderMaintenance() {
   const data=maintenanceData;
   $('maintenance-charts').innerHTML=Object.entries(maintenanceSpecs).map(([key,spec])=>{
     const target=data.targets[key],targetText=target===null?'Sem meta cadastrada':`Meta ${spec.direction==='min'?'≥':'≤'} ${maintenanceValue(target,spec.unit)}`;
-    return `<section class="maintenance-indicator"><div class="section-line"><div><h2>${spec.title}${key==='failure_events'?'':key==='imc'?' · Paradas corretivas':spec.unit==='%'?' · Disponibilidade':spec.unit==='min'?' · Minutos por falha':' · Horas por falha'}</h2><p class="formula">${esc(spec.formula)}</p></div></div><div class="maintenance-pair"><article class="panel chart-card"><div class="section-line"><div><h2>Histórico anual</h2><p>${key==='failure_events'?'Média mensal · eventos do ano ÷ meses com dados':'Índice calculado pelos totais de cada ano'}</p></div><span class="badge chart-target">${esc(targetText)}${target===null?'':' · '+new Date().getFullYear()}</span></div><div class="chart" id="maintenance-${key}-annual"></div></article><article class="panel chart-card"><div class="section-line"><div><h2>Mensal · ${data.latest_year??'—'}</h2><p>${key==='failure_events'?'Quantidade de eventos em cada mês':'Ano mais recente das fontes selecionadas'}</p></div><span class="badge chart-target">${esc(targetText)}</span></div><div class="chart" id="maintenance-${key}-monthly"></div></article></div></section>`;
+    return `<section class="maintenance-indicator"><div class="section-line"><div><h2>${spec.title}${key==='failure_events'?'':key==='imc'?' · Paradas corretivas':spec.unit==='%'?' · Disponibilidade':spec.unit==='min'?' · Minutos por falha':' · Horas por falha'}</h2><p class="formula">${esc(spec.formula)}</p></div></div><div class="maintenance-pair"><article class="panel chart-card"><div class="section-line"><div><h2>Histórico anual</h2><p>${key==='failure_events'?'Média mensal · eventos do ano ÷ meses com dados':'Índice calculado pelos totais de cada ano'}</p></div><span class="badge chart-target">${esc(targetText)}${target===null?'':' · '+new Date().getFullYear()}</span></div><div class="chart" id="maintenance-${key}-annual"></div></article><article class="panel chart-card"><div class="section-line"><div><h2>Mensal · ${data.latest_year??'—'}</h2><p>${key==='failure_events'?'Quantidade de eventos em cada mês':'Ano mais recente das fontes selecionadas'}</p></div><span class="badge chart-target">${esc(targetText)}</span></div><div class="chart" id="maintenance-${key}-monthly"></div></article></div>${key==='imc'?'<section class="panel padded imc-top-panel"><h2>Top 10 maiores paradas de manutenção</h2><p class="field-help">Clique em uma barra de mês ou ano do IMC. ME + MM por evento consolidado, ordenados pelos minutos dentro do período e dos arquivos selecionados. Preventivas e outras modalidades não entram. Datas abaixo são dos lançamentos corretivos; paradas que atravessam períodos têm seus minutos rateados como no IMC.</p><div id="imc-top-results" aria-live="polite">Selecione um mês ou ano no gráfico acima.</div></section>':''}</section>`;
   }).join('');
   for(const [key,spec] of Object.entries(maintenanceSpecs)) {
     for(const scope of ['annual','monthly']) {
@@ -273,7 +279,7 @@ function renderMaintenance() {
       layout.shapes=target===null?[]:[{type:'line',xref:scope==='annual'?'x':'paper',
         x0:scope==='annual'?targetIndex-.36:0,x1:scope==='annual'?targetIndex+.36:1,
         yref:'y',y0:target,y1:target,line:{color:'#ad632e',dash:'dot',width:2}}];
-      plot(`maintenance-${key}-${scope}`,[{type:'bar',x:labels,y:rows.map(r=>r[key]),name:spec.title,marker:{color:colors},customdata:details,text:rows.map(r=>r[key]===null?'':fmt(r[key],key==='failure_events'&&scope==='monthly'?0:2)),textposition:'outside',cliponaxis:false,textfont:{size:10},hovertemplate:key==='failure_events'?'%{customdata[0]}<br>'+ (scope==='annual'?'Eventos no ano: %{customdata[4]}<br>Meses com dados: %{customdata[7]}<br>Média: %{y:.2f} eventos/mês':'Eventos no mês: %{y:.0f}')+'<br>%{customdata[5]}<extra></extra>':'%{customdata[0]}<br>'+spec.title+': %{y:.2f} '+spec.unit+'<br>Calendário: %{customdata[1]} h<br>ME + MM: %{customdata[2]} min<br>Preventiva: %{customdata[3]} min<br>Falhas: %{customdata[4]}<br>%{customdata[5]}<extra></extra>'}],layout);
+      plot(`maintenance-${key}-${scope}`,[{type:'bar',x:labels,y:rows.map(r=>r[key]),name:spec.title,marker:{color:colors},customdata:details,text:rows.map(r=>r[key]===null?'':fmt(r[key],key==='failure_events'&&scope==='monthly'?0:2)),textposition:'outside',cliponaxis:false,textfont:{size:10},hovertemplate:key==='failure_events'?'%{customdata[0]}<br>'+ (scope==='annual'?'Eventos no ano: %{customdata[4]}<br>Meses com dados: %{customdata[7]}<br>Média: %{y:.2f} eventos/mês':'Eventos no mês: %{y:.0f}')+'<br>%{customdata[5]}<extra></extra>':'%{customdata[0]}<br>'+spec.title+': %{y:.2f} '+spec.unit+'<br>Calendário: %{customdata[1]} h<br>ME + MM: %{customdata[2]} min<br>Preventiva: %{customdata[3]} min<br>Falhas: %{customdata[4]}<br>%{customdata[5]}<extra></extra>'}],layout,key==='imc'?p=>renderImcTop(scope,p.customdata[0]):null);
     }
   }
   const audit=[...data.annual,...data.monthly];
@@ -288,6 +294,17 @@ function renderMaintenance() {
     return `<tr><td><strong>${esc(r.period)}</strong><small>${esc(coverage||'Sem cobertura')}</small></td><td>${fmt(r.calendar_hours,2)}</td>${meta.modalities.map(m=>`<td>${fmt(r.modalities[m],2)}</td>`).join('')}<td>${fmt(r.failures)}</td><td>${r.failure_events===null?'—':fmt(r.failure_events,r.months_with_data===undefined?0:2)}</td><td class="audit-notes">${esc(notes.join(' · ')||'—')}</td></tr>`;
   }).join('');
 }
+function renderImcTop(scope,period) {
+  const row=maintenanceData?.[scope]?.find(r=>r.period===period);
+  if(!row)return;
+  const target=$('imc-top-results');
+  const heading=`${maintenanceData.equipment} · ${period} · ${fmt(row.corrective_minutes,2)} min de ME + MM · ${fmt(row.failures)} eventos`;
+  target.innerHTML=`<h3>${esc(heading)}</h3>`+(row.top_stops.length?`<div class="table-wrap"><table><thead><tr><th>Posição</th><th>Início / fim</th><th>Modalidade</th><th>Minutos no período</th><th>Descrição dos lançamentos</th></tr></thead><tbody>${row.top_stops.map((stop,i)=>`<tr><td>${i+1}</td><td>${dateText(stop.start,true)}<small>Até ${dateText(stop.end,true)}</small></td><td>${esc(stop.modalities.join(' + '))}</td><td><strong>${fmt(stop.minutes,2)}</strong></td><td><details ${i===0?'open':''}><summary>${stop.rows.length} lançamento(s) · ${esc(stop.rows[0].observation||stop.rows[0].reason||'Sem descrição')}</summary>${stop.rows.map(r=>`<p><strong>${esc(r.modality)} · ${fmt(r.minutes,2)} min</strong> · ${esc(r.reason)}<br>${esc(r.observation||'Sem observação')}<br><button class="text-button imc-record-detail" data-id="${esc(r.id)}">Ver evento completo ↗</button></p>`).join('')}</details></td></tr>`).join('')}</tbody></table></div>`:'<p>Nenhuma parada corretiva de manutenção neste período.</p>');
+}
+$('maintenance-charts').addEventListener('click',run(async e=>{
+  const button=e.target.closest('.imc-record-detail');
+  if(button)await showDetail(button.dataset.id);
+}));
 $('maintenance-form').addEventListener('submit',run(async e=>{e.preventDefault();await loadMaintenance();}));
 $('maintenance-equipment').addEventListener('change',run(loadMaintenance));
 $('targets-form').addEventListener('submit',run(async e=>{

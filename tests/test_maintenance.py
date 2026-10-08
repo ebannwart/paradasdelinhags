@@ -71,6 +71,24 @@ class MaintenanceTests(unittest.TestCase):
         self.assertEqual(year['mttr'],60)
         self.assertEqual(year['failure_events'],0.5)
         self.assertEqual((jan['failure_events'],feb['failure_events']),(1,1))
+        self.assertEqual(jan['top_stops'][0]['minutes'],30)
+        self.assertEqual(feb['top_stops'][0]['minutes'],30)
+        self.assertEqual(year['top_stops'][0]['minutes'],60)
+        self.assertEqual(len(year['top_stops'][0]['rows']),1)
+
+    def test_top_stops_group_rank_limit_and_corrective_only(self):
+        rows=[row(start=f'2026-01-{day:02d} 10:00',end=f'2026-01-{day:02d} 11:00',minutes=day)
+              for day in range(1,13)]
+        rows += [row(start='2026-01-12 11:01',end='2026-01-12 11:30',minutes=30,responsible='ME-Manutenção Elétrica'),
+                 row(start='2026-01-13 10:00',end='2026-01-13 11:00',minutes=900,responsible='OP'),
+                 row(start='2026-01-14 10:00',end='2026-01-14 11:00',minutes=800,responsible='PP',reason='MP'),
+                 row(equipment='L2',minutes=1000)]
+        self.load(rows)
+        top=self.report()['monthly'][0]['top_stops']
+        self.assertEqual(len(top),10)
+        self.assertEqual([s['minutes'] for s in top],[42,11,10,9,8,7,6,5,4,3])
+        self.assertEqual(len(top[0]['rows']),2)
+        self.assertEqual(self.report()['monthly'][1]['top_stops'],[])
 
     def test_targets_are_per_line_persistent_and_validated(self):
         self.load([row(),row(equipment='L2')])

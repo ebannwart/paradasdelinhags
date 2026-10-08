@@ -11,3 +11,6 @@
 
 .maintenance-pair .chart-card>.section-line{align-items:flex-start}.maintenance-pair .chart-target{margin-left:auto;text-align:right;letter-spacing:0;font-weight:600;color:#815d27;background:#fff4df}
 .maintenance-pair .chart-card>.section-line{flex-wrap:nowrap;gap:8px}.maintenance-pair .chart-card>.section-line>div{min-width:0}.maintenance-pair .chart-target{flex-shrink:0}
+
+.imc-top-panel{margin-top:18px}.imc-top-panel td:last-child{min-width:280px;max-width:650px;overflow-wrap:anywhere}.imc-top-panel summary{cursor:pointer}.imc-top-panel td p{white-space:pre-wrap}
+#maintenance-imc-annual .xtick text,#maintenance-imc-monthly .xtick text{pointer-events:all!important;cursor:pointer}

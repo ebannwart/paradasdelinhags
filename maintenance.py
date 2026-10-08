@@ -26,7 +26,24 @@ def period_bucket(period, windows):
     return {'period':period, 'windows':windows,
             'calendar_minutes':sum((b-a).total_seconds()/60 for a,b in windows),
             'modalities':{key:0.0 for key in MODALITIES},
-            'events':set(), 'records':set(), 'overlaps':set(), 'zero_duration':set()}
+            'events':set(), 'records':set(), 'overlaps':set(), 'zero_duration':set(), 'corrective_rows':{}}
+
+
+def largest_stops(bucket):
+    events={}
+    for row in bucket['corrective_rows'].values():
+        event=events.setdefault(row['event_id'], {'event_id':row['event_id'], 'start':row['start'],
+            'end':row['end'], 'minutes':0, 'modalities':set(), 'rows':[]})
+        event['start']=min(event['start'],row['start'])
+        event['end']=max(event['end'],row['end'])
+        event['minutes']+=row['minutes']
+        event['modalities'].add(row['modality'])
+        event['rows'].append(row)
+    ranked=sorted(events.values(),key=lambda e:(-e['minutes'],e['start'],e['event_id']))[:10]
+    for event in ranked:
+        event['modalities']=sorted(event['modalities'])
+        event['rows'].sort(key=lambda r:(r['start'],r['id']))
+    return ranked
 
 
 def calculate(bucket):
@@ -48,6 +65,7 @@ def calculate(bucket):
             'mtbf':(total-corrective)/failures/60 if corrective_ok and failures else None,
             'mttr':corrective/failures if has_data and failures else None,
             'failure_events':failures if has_data else None,
+            'top_stops':largest_stops(bucket),
             'errors':errors,
             'coverage': [{'from':a.date().isoformat(),'to':(b-timedelta(seconds=1)).date().isoformat()}
                          for a,b in bucket['windows']]}
@@ -78,7 +96,7 @@ def report(db, equipment, file_ids=None):
     if file_ids:
         source_filter=f"EXISTS(SELECT 1 FROM sources s WHERE s.record_id=r.id AND s.file_id IN ({','.join('?' for _ in file_ids)}))"
         params+=file_ids
-    rows=db.execute(f'''SELECT r.id,r.start,r.end,r.minutes,r.event_id,r.overlap,{MODALITY_SQL} modality
+    rows=db.execute(f'''SELECT r.id,r.start,r.end,r.minutes,r.event_id,r.overlap,r.observation,r.reason,{MODALITY_SQL} modality
                         FROM records r WHERE r.equipment=? AND {source_filter} ORDER BY r.start''',params)
     outside_minutes=0.0
     for row in rows:
@@ -102,6 +120,10 @@ def report(db, equipment, file_ids=None):
                     if duration==0 and row['minutes']>0:bucket['zero_duration'].add(row['id'])
                     if row['modality'] in ('ME','MM') and minutes>0:
                         bucket['events'].add(row['event_id'] or row['id'])
+                        bucket['corrective_rows'][row['id']]={
+                            'id':row['id'],'event_id':row['event_id'] or row['id'],
+                            'start':row['start'],'end':row['end'],'minutes':minutes,
+                            'modality':row['modality'],'observation':row['observation'],'reason':row['reason']}
             cursor=boundary
         outside_minutes+=max(0,row['minutes']-allocated)
     monthly={p:calculate(bucket) for p,bucket in sorted(buckets.items())}
@@ -113,6 +135,11 @@ def report(db, equipment, file_ids=None):
         for b in observed:
             for key in MODALITIES: combined['modalities'][key]+=b['modalities'][key]
             for key in ('events','records','overlaps','zero_duration'): combined[key].update(b[key])
+            for record_id,row in b['corrective_rows'].items():
+                if record_id in combined['corrective_rows']:
+                    combined['corrective_rows'][record_id]['minutes']+=row['minutes']
+                else:
+                    combined['corrective_rows'][record_id]=dict(row)
         item=calculate(combined)
         item['months_with_data']=len(observed)
         item['failure_events']=item['failures']/len(observed) if observed else None

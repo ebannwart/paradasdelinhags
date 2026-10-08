@@ -4,7 +4,7 @@ Aplicação local em Python e Flask para analisar lançamentos de parada e class
 
 ## Iniciar no Windows
 
-**Pacote sem pip na máquina de destino:** baixe `ParadasDeLinha-offline.zip` nos [anexos da Release offline](https://github.com/ebannwart/paradasdelinhags/releases/tag/v1.0.0-offline) e siga [INSTALACAO-OFFLINE.md](INSTALACAO-OFFLINE.md). Usa o Python 3.11+ já instalado e inclui as dependências em `libs`. Os ZIPs automáticos de código-fonte não incluem essas bibliotecas.
+**Pacote sem pip na máquina de destino:** baixe `ParadasDeLinha-offline.zip` nos [anexos da Release offline](https://github.com/ebannwart/paradasdelinhags/releases/tag/v1.0.1-offline) e siga [INSTALACAO-OFFLINE.md](INSTALACAO-OFFLINE.md). Usa o Python 3.11+ já instalado e inclui as dependências em `libs`. Os ZIPs automáticos de código-fonte não incluem essas bibliotecas.
 
 Para transferir a aplicação para outro computador, siga o [guia de instalação](instalacao.md), com comandos para criar o ambiente virtual, instalar bibliotecas, restaurar o backup e criar o inicializador `.bat` no desktop.
 
@@ -106,3 +106,5 @@ Testes cobrem importação/reimportação, variantes de cabeçalho, duplicação
 - `templates/index.html`, `static/`: interface e gráficos.
 
 Limites iniciais: arquivos `.xlsx`, 100 MB por envio, uma importação/reagrupamento por vez, uso pessoal local. Não há sincronização com o GitHub, classificação por IA ou login multiusuário nesta versão.
+
+No KPI manutencao, clique nas barras ou nos rotulos de mes/ano do IMC para consultar abaixo dele as 10 maiores paradas corretivas (ME + MM), agrupadas por evento e ordenadas pelos minutos rateados dentro do periodo e das fontes selecionadas. A lista inclui descricoes e acesso ao evento completo.
