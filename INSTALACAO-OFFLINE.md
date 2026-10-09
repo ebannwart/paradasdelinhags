@@ -20,6 +20,30 @@ Clique com o botão direito em **Iniciar offline.bat** → **Mostrar mais opçõ
 
 ## Escolher o Python ou ambiente virtual existente
 
+### Quando funciona somente pelo Anaconda Prompt
+
+Edite **Iniciar offline.bat** com o Bloco de Notas e preencha as linhas de configuração no início:
+
+```bat
+set "ANACONDA_DIR=C:\Users\seu_usuario\anaconda3"
+set "ANACONDA_ENV=base"
+```
+
+`ANACONDA_DIR` é a pasta da instalação correta, aquela que contém `Scripts\activate.bat`; não é o caminho do atalho do prompt. Se houver duas instalações, use a que funcionou. Para identificar os caminhos, execute **no Anaconda Prompt em que a aplicação funcionou**:
+
+```bat
+conda info --base
+echo %CONDA_PREFIX%
+```
+
+Use o resultado de `conda info --base` em `ANACONDA_DIR`. Em `ANACONDA_ENV`, pode colocar o caminho completo mostrado por `echo %CONDA_PREFIX%`, para escolher exatamente o mesmo ambiente. Também aceita `base` ou o nome de um ambiente, por exemplo `paradas`.
+
+Salve e dê dois cliques em **Iniciar offline.bat**. O arquivo ativa o Anaconda e executa o Python desse ambiente, mantendo as bibliotecas locais da pasta `libs`. Não é necessário abrir o Anaconda Prompt manualmente. **Diagnostico offline.bat** usa a mesma configuração. Se falhar a ativação, o inicializador informa o erro em vez de escolher outro Python.
+
+Para atualizar uma instalação offline existente, basta substituir `Iniciar offline.bat` na pasta da aplicação e preencher os caminhos; preserve `libs` e `data`.
+
+### Sem Anaconda
+
 O inicializador tenta `python` e depois `py -3`. Se necessário, edite `Iniciar offline.bat` e insira, antes de `if defined PYTHON_EXE`, uma linha como:
 
 ```bat
