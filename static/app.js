@@ -319,7 +319,7 @@ $('targets-form').addEventListener('submit',run(async e=>{
     toast('Metas salvas para a linha '+equipment+'.');
   }finally{$('targets-fields').disabled=false;}
 }));
-document.querySelectorAll('.nav').forEach(b=>b.addEventListener('click',run(()=>showView(b.dataset.view))));
+document.querySelectorAll('.nav[data-view]').forEach(b=>b.addEventListener('click',run(()=>showView(b.dataset.view))));
 $('filters-form').addEventListener('submit',run(async e=>{e.preventDefault();filters=readFilters();page=1;clearSelection();writeFilters();await refreshView();}));
 $('clear-filters').addEventListener('click',run(async()=>{filters={};page=1;clearSelection();writeFilters();await refreshView();}));
 ['metric','pareto-metric','pareto-labels','heatmap-metric','heatmap-group'].forEach(id=>$(id).addEventListener('change',renderCharts));$('stack').addEventListener('change',run(loadSummary));

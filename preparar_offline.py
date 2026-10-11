@@ -33,7 +33,7 @@ def build():
                 target = libs / rel
                 target.parent.mkdir(parents=True, exist_ok=True)
                 shutil.copy2(source, target)
-    for pattern in ('*.py', '*.md', '*.bat', '*.xlsx', 'requirements.txt'):
+    for pattern in ('*.py', '*.md', '*.bat', '[0-9][0-9][0-9][0-9].xlsx', 'requirements.txt'):
         for source in ROOT.glob(pattern):
             shutil.copy2(source, app / source.name)
     for folder in ('static', 'templates', 'tests'):

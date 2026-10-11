@@ -16,6 +16,7 @@ from werkzeug.exceptions import HTTPException
 
 import analytics
 import maintenance
+import sap_plan
 from modalities import MODALITIES, LABELS, MODALITY_SQL
 from database import ACTIVE, TYPE, connect, initialize, normalize
 from importer import TYPES, import_file, rebuild_events
@@ -33,6 +34,7 @@ def create_app(db_path=None, source_dir=None):
                       SESSION_COOKIE_SAMESITE='Strict', SESSION_COOKIE_HTTPONLY=True,
                       DB_PATH=str(db_path or data_dir / 'paradas.sqlite3'), SOURCE_DIR=Path(source_dir or ROOT))
     initialize(app.config['DB_PATH'])
+    sap_plan.register(app, data_dir)
     job_lock = threading.Lock()
     job = {'running': False, 'completed': 0, 'total': 0, 'current': '', 'results': []}
     job_state_lock = threading.Lock()

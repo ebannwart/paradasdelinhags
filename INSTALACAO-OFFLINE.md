@@ -89,3 +89,13 @@ Use o ambiente de desenvolvimento com as dependências instaladas e execute:
 ```
 
 O script gera uma pasta nova dentro de `dist` e um ZIP com a aplicação e as dependências. Não é necessário executá-lo no computador da empresa.
+
+## Atualizar para a versão com SAP PM
+
+1. Encerre a aplicação anterior e preserve uma cópia de segurança de sua pasta `data` e da configuração Anaconda/Python do inicializador.
+2. Extraia o novo ZIP completo em outra pasta. Não misture bibliotecas de versões diferentes.
+3. Para manter seus dados, restaure o backup em `data\paradas.sqlite3` na nova pasta, seguindo as instruções acima. O banco é atualizado automaticamente para incluir os novos campos.
+4. Copie a configuração Anaconda/Python para o novo **Iniciar offline.bat** e execute **Diagnostico offline.bat**.
+5. Inicie a aplicação. Abra **Realização do plano** e revise **Selecionar arquivos SAP**, pois os caminhos do computador anterior podem não existir na empresa.
+
+O módulo SAP e a exportação Excel utilizam as bibliotecas incluídas em `libs`. Sem restaurar o backup, configure os status de execução (por exemplo, EXCT), importe IP18/IW39/IP24/IH06 e crie os agrupamentos. Não é necessário instalar bibliotecas com pip no destino.
