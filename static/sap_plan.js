@@ -38,6 +38,18 @@ async function loadMeta(){meta=await api('meta');filterAssets();const group=$('g
 $('sources').innerHTML=meta.files.length?meta.files.map(f=>`<p><b>${esc(f.name)}</b> · ${num(f.rows)} linhas · importado em ${esc(f.imported_at.replace('T',' '))}</p>`).join(''):'<p>Nenhuma fonte importada. Coloque as exportações na pasta data e clique em Atualizar.</p>';
 const warnings=['A IP18 é o cadastro mestre. A execução usa a IW39: sem confirmação final, a ocorrência conta como não executada.'];if(!meta.files.some(f=>f.kind==='IP18'))warnings.push('Importe a IP18 para carregar o cadastro mestre.');if(meta.files.some(f=>f.kind==='IP24'&&f.rows===5000))warnings.push('IP24 com 5.000 linhas: pode haver limite de exportação. Datas complementares vêm da IW39; a cobertura da programação depende dos arquivos importados.');$('limitations').textContent=warnings.join(' ');$('import').disabled=meta.job.running;
 renderGroupManager();if(meta.job.running&&!polling)pollImport();}
+const dateStorageKey='sap-plan-date-filter';
+function saveDateFilter(){
+ try{localStorage.setItem(dateStorageKey,JSON.stringify({from:$('from').value,to:$('to').value}));}catch(error){/* Storage can be unavailable in private environments. */}
+}
+function restoreDateFilter(){
+ try{const saved=JSON.parse(localStorage.getItem(dateStorageKey)||'null');if(!saved||typeof saved!=='object')return;
+  for(const key of ['from','to'])if(typeof saved[key]==='string'&&(!saved[key]||/^\d{4}-\d{2}-\d{2}$/.test(saved[key])))$(key).value=saved[key];
+ }catch(error){/* Ignore invalid or unavailable local storage. */}
+}
+function clearFiltersKeepingDates(){
+ const from=$('from').value,to=$('to').value;$('filters').reset();$('from').value=from;$('to').value=to;saveDateFilter();
+}
 function filters(){return {date_from:$('from').value,date_to:$('to').value,assets:selected(),group:$('group').value,search:$('search').value,text:$('text').value,type:$('type').value,activity_type:[...$('activity_type').selectedOptions].map(o=>o.value),work_center:[...$('work_center').selectedOptions].map(o=>o.value),abc:$('abc').value,condition:$('condition').value,};}
 function calendar(){
  const hours=$('chart-secondary').value==='hours',label=hours?'H Total':'Total de ordens',value=m=>hours?m.duration_hours:m.order_count,format=v=>v==null?'—':num(v);
@@ -75,8 +87,8 @@ $('by-asset').innerHTML=d.by_asset.length?'<table><thead><tr><th>Ativo</th><th>D
 enableSummarySorting('by-asset',d.by_asset,[a=>a.asset,a=>a.name,a=>a.planned,a=>a.done,a=>a.pending,a=>a.rate]);
 }
 async function pollImport(){polling=true;message('Importando arquivos SAP. Você pode continuar usando os filtros.');try{while(true){await new Promise(r=>setTimeout(r,2000));const m=await api('meta');if(!m.job.running){if(m.job.error)throw Error(m.job.error);await loadMeta();await report();message('Importação concluída. Dados e indicadores atualizados.');break;}}}catch(e){message(e.message,true);$('import').disabled=false;}finally{polling=false;}}
-$('filters').onsubmit=run(async()=>{await report();});$('search').oninput=filterAssets;
-$('clear').onclick=run(async()=>{$('filters').reset();filterAssets();await report();});
+$('filters').onsubmit=run(async()=>{saveDateFilter();await report();});$('search').oninput=filterAssets;
+$('clear').onclick=run(async()=>{clearFiltersKeepingDates();filterAssets();await report();});
 $('group-form').onsubmit=run(async()=>{await api('groups',{name:$('group-name').value,assets:selected()});await loadMeta();await report();message('Agrupamento salvo. Selecione-o no filtro Grupo de ativos.');});
 $('rules').onsubmit=run(async()=>{const codes=id=>$(id).value.trim().toUpperCase().split(/\s+/).filter(Boolean);await api('config',{done_user:codes('done-user'),not_done_user:codes('not-done-user'),plan_manter:meta.config.plan_manter,no_plan_extra:meta.config.no_plan_extra});await loadMeta();await report();message('Regras salvas. Indicadores recalculados.');});
 $('import').onclick=run(async()=>{
@@ -92,6 +104,8 @@ $('source-form').onsubmit=run(async()=>{
  try{await api('import',{choices});$('source-picker').hidden=true;$('import').disabled=true;pollImport();}
  finally{$('source-submit').disabled=false;}
 });
+restoreDateFilter();
+$('from').onchange=saveDateFilter;$('to').onchange=saveDateFilter;
 run(async()=>{await loadMeta();await report();})();
 
 $('group-cards').onclick=run(async e=>{const button=e.target.closest('[data-group],[data-all-assets]');if(!button)return;if(button.hasAttribute('data-all-assets')){$('group').value='';$('search').value='';for(const option of $('assets').options)option.selected=false;filterAssets();}else{$('group').value=button.dataset.group;}await report();});

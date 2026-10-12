@@ -29,6 +29,8 @@ O índice por quantidade é executadas / previstas × 100, contado por item, ord
 
 Componentes abaixo de `G-CSN-79-001-010-XXX` são consolidados nesse nível. Locais superiores cadastrados também estão disponíveis; selecionar um pai inclui seus descendentes. A tabela distingue planos cadastrados diretamente em um local superior.
 
+O último período fica salvo no navegador e é restaurado ao reabrir a página. O botão Limpar conserva as datas e remove os demais filtros. Para mudar o período, edite os campos De e Até.
+
 Há filtros de período, ativos, grupo, tipo de ordem, tipo de atividade, centro de trabalho, ABC e texto. Atividade e centro permitem múltiplas seleções. **Todos os Ativos** ignora seleção e busca de ativos e grupo no seu card, mantendo período e demais filtros; clicar nele aplica esse recorte às tabelas e ao gráfico.
 
 Salve um grupo pela seleção de ativos. Em **Gerenciar agrupamentos**, edite nome e composição, ordene os cards, oculte ou exiba e exclua grupos. As preferências persistem no banco. Todos os Ativos permanece fixo no início.
