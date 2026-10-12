@@ -4,7 +4,7 @@ Aplicação local em Python e Flask para analisar lançamentos de parada e class
 
 ## Iniciar no Windows
 
-**Pacote sem pip na máquina de destino:** baixe `ParadasDeLinha-offline.zip` nos [anexos da Release offline](https://github.com/ebannwart/paradasdelinhags/releases/tag/v1.1.0-offline) e siga [INSTALACAO-OFFLINE.md](INSTALACAO-OFFLINE.md). Usa o Python 3.11+ já instalado e inclui as dependências em `libs`. Os ZIPs automáticos de código-fonte não incluem essas bibliotecas.
+**Pacote sem pip na máquina de destino:** baixe `ParadasDeLinha-offline.zip` nos [anexos da Release offline](https://github.com/ebannwart/paradasdelinhags/releases/tag/v1.2.0-offline) e siga [INSTALACAO-OFFLINE.md](INSTALACAO-OFFLINE.md). Usa o Python 3.11+ já instalado e inclui as dependências em `libs`. Os ZIPs automáticos de código-fonte não incluem essas bibliotecas.
 
 Para transferir a aplicação para outro computador, siga o [guia de instalação](instalacao.md), com comandos para criar o ambiente virtual, instalar bibliotecas, restaurar o backup e criar o inicializador `.bat` no desktop.
 
@@ -22,7 +22,17 @@ O servidor Waitress escuta apenas em `127.0.0.1`. Não há autenticação para a
 
 ## Fluxo de uso
 
-1. Em **Arquivos e ajustes**, marque as planilhas da pasta ou envie outros `.xlsx`. A importação acontece em segundo plano e mostra resultados por arquivo.
+### Configurações e pasta Importacao
+
+Use **Configurações** (`/configuracoes`) para administrar as fontes e ajustes da aplicação. A antiga entrada “Arquivos e ajustes” foi substituída por esta rota. A pasta `Importacao` reúne as planilhas anuais de paradas, o ZPMX e as exportações IH06/IP18/IP24/IW39/IW49N. Na primeira configuração, os arquivos reconhecidos são sugeridos e salvos. Novas alterações são mantidas no SQLite e no backup, inclusive caminhos temporariamente ausentes. Reiniciar a aplicação não restaura os valores iniciais.
+
+- **Paradas de linha:** lista dos arquivos `.xlsx`, atualização dos dados, tolerância de agrupamento e metas dos KPIs por linha.
+- **Análises de falha:** endereço do ZPMX, atualização das análises e quantidade de ocorrências por página.
+- **Plano preventivo:** endereços das cinco exportações SAP, atualização das fontes, regras de status IW39 e manutenção dos agrupamentos de ativos. A IW49N é uma fonte auxiliar armazenada; o indicador de execução continua baseado na IW39.
+
+Salve os caminhos antes de atualizar. Os botões de atualização usam os últimos endereços salvos. Substituir o conteúdo de um arquivo no mesmo endereço permite reimportá-lo sem configurar novamente. Retirar um caminho da configuração não exclui os dados já importados. Arquivos de paradas devem ter nomes diferentes, pois cada nome identifica a fonte substituída na reimportação. Campos SAP vazios preservam os dados anteriores daquela transação. Os filtros das análises permanecem nas respectivas rotas; os ajustes estruturais ficam em Configurações.
+
+1. Em **Configurações**, salve os caminhos e use **Atualizar paradas**. A importação acontece em segundo plano e mostra resultados por arquivo.
 2. Em **Visão geral**, selecione anos, meses, equipamentos, ofensores e demais filtros. Clique em **Aplicar filtros**. Sem seleção em um campo significa todos. Use Ctrl para selecionar vários valores.
 3. O Pareto em destaque permite escolher tempo total ou quantidade de paradas (eventos), além de mostrar ou ocultar os valores sobre as barras. O heatmap permite agrupar as colunas por mês ou por ano, ordenadas cronologicamente, e ordena os ofensores de forma decrescente pelo último período com dados nas fontes do recorte. A medida pode ser tempo ou quantidade. A quantidade anual conta eventos distintos, sem somar contagens mensais que poderiam repetir um evento. Todos os filtros aplicados são respeitados, inclusive meses selecionados no agrupamento anual. Clique nas barras ou células para consultar os lançamentos. A evolução, a composição e o gráfico por equipamento complementam a análise. O percentual acumulado por quantidade usa a soma das contagens por ofensor; um evento com vários ofensores participa de cada categoria.
 4. Em **Lançamentos**, busque palavras no motivo/observação. Todas as palavras são exigidas, ignorando acentos e caixa. Classifique pela lista de cada linha ou selecione vários registros e aplique um ofensor em lote. A seleção da página e a seleção de todos os resultados são explícitas.
@@ -83,6 +93,22 @@ Na rota KPI, minutos de lançamentos que atravessam períodos são rateados prop
 
 Sobreposições não são corrigidas automaticamente. Percentuais com paradas consideradas maiores que T ficam indisponíveis. Início igual ao fim com minutos positivos é sinalizado e atribuído ao período do início. A memória de cálculo apresenta calendário, minutos das sete modalidades, eventos e observações por período.
 
+## Acompanhamento mensal de análises de falha
+
+A rota **`/analises-de-falha`** acompanha ocorrências, investigações e ações do ZPMX. Defina o endereço do ZPMX em **Configurações → Análises de falha** e use **Atualizar análises** para ler a exportação Unicode SAP em `.xls`/`.txt` do último endereço salvo. Aceita os relatórios resumido e expandido em duas linhas por registro. Não lê arquivos binários Excel nessa rota.
+
+Selecione linha, mês da ocorrência, status da análise e situação da ação. A linha é extraída do local de instalação, com o nome da unidade operacional exibido ao lado. O mês corresponde à **data da parada**, não à conclusão da investigação. Abra a ocorrência para consultar sintomas, causas, cinco porquês e todas as ações. O status original é preservado: “Falha analisada” não presume que existam medidas abertas, e análise concluída não implica que as ações estejam encerradas.
+
+Os filtros **Centro de trabalho** e **Perda de produção** usam, respectivamente, `Cent. Trab. Resp.` e a marcação `Perda de Produção` do ZPMX. “Não marcada” significa campo presente e vazio, sem inferir perda pela duração. Campos não disponíveis na versão aparecem como não informados. A tabela mostra a data de `Dta. parada processo` e o tempo de `Dur. parada processo`, preservando separadamente a data e duração de produção no registro. A unidade de duração ainda não foi confirmada. Clique em qualquer cabeçalho para alternar a ordenação crescente/decrescente de todo o recorte, antes da paginação. Tempos são ordenados numericamente e valores ausentes ficam no final. A exportação respeita os novos filtros e a ordenação. Importar novamente uma base antiga gera uma nova versão com esses campos, sem alterar o histórico anterior.
+
+**Pendências anteriores** reúne notas anteriores ao mês selecionado com investigação em andamento ou ações não encerradas, respeitando os demais filtros. As abas **Concluídas** e **Todas** consideram todos os meses da importação, com o seletor de mês desabilitado e os demais filtros aplicados. Concluídas exige status de análise concluída e nenhuma ação não encerrada; notas concluídas sem ações registradas também aparecem. Os indicadores superiores representam a aba selecionada (no Registro mensal, representam o mês). O filtro de ação seleciona notas com ao menos uma ação correspondente, restringe os indicadores de ações e a exportação CSV; o detalhe continua mostrando todas as ações da nota.
+
+Cada conteúdo importado gera uma versão imutável no SQLite. Reimportar o mesmo conteúdo seleciona a versão já existente. O seletor de histórico permite comparar as bases. Vencimentos são avaliados na data atual de São Paulo, inclusive ao consultar uma versão antiga: a versão conserva o status importado, mas não representa uma fotografia histórica dos atrasos. Uma ação aberta vence no dia seguinte ao prazo. Conclusões após o prazo não entram como pendências.
+
+Notas repetidas contam uma única vez. Ações são comparadas pelos seus dados completos, preservando ações distintas com numeração reutilizada e sinalizando ambiguidades. A duração mantém a unidade do relatório, ainda não confirmada. Exportações inválidas não substituem versões anteriores. Textos truncados na origem não são reconstruídos.
+
+Em **Registro mensal**, selecione uma linha e mês e salve decisões, responsáveis e prazos da reunião. As anotações persistem por linha/mês e não alteram os status SAP. Histórico e registros fazem parte do banco e do backup existente. Esta primeira versão usa importação manual e não sincroniza alterações de volta ao SAP.
+
 ## Persistência e cópia de segurança
 
 O banco fica em `data/paradas.sqlite3`; a chave de sessão em `data/.secret`. Ambos estão fora do Git. Os arquivos Excel originais não são alterados. Uma cópia baixada em **Baixar cópia de segurança** inclui fontes importadas, ofensores, classificações e tolerância.
@@ -113,4 +139,4 @@ No KPI manutencao, clique nas barras ou nos rotulos de mes/ano do IMC para consu
 
 Acesse **Realização do plano** no menu. A rota usa IP18 como mestre, IW39 para execução e duração, IP24 para programação e IH06 para nomes de locais. Consulte [SAP-PLANO.md](SAP-PLANO.md) para regras, filtros, agrupamentos e exportação Excel.
 
-O ZIP offline desta versão inclui esse módulo e suas dependências. As planilhas SAP, o banco local e as preferências pessoais não são publicadas. Para preservar configurações e dados, transfira o backup SQLite por um meio interno autorizado; ao mudar de computador, revise os caminhos em **Selecionar arquivos SAP**.
+O ZIP offline desta versão inclui esse módulo e suas dependências. O pacote inclui as fontes da pasta Importacao. O banco local, a chave de sessão e as preferências pessoais não são incluídos. Para preservar configurações e dados, transfira o backup SQLite por um meio interno autorizado; ao mudar de computador, revise os caminhos em **Configurações**.

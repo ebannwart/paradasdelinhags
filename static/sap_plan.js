@@ -35,7 +35,7 @@ function run(fn){return async e=>{if(e)e.preventDefault();try{await fn(e);}catch
 function selected(){return [...$('assets').selectedOptions].map(x=>x.value);}
 function filterAssets(){const keep=selected(),q=$('search').value.normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase();$('assets').innerHTML=(meta.assets||[]).filter(a=>keep.includes(a.asset)||(a.asset+' '+a.name).normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().includes(q)).map(a=>`<option value="${esc(a.asset)}" ${keep.includes(a.asset)?'selected':''}>${esc(a.name)} · ${esc(a.asset)}</option>`).join('');}
 async function loadMeta(){meta=await api('meta');filterAssets();const group=$('group').value;$('group').innerHTML='<option value="">Todos os grupos</option>'+meta.groups.map(g=>`<option value="${g.id}">${esc(g.name)}</option>`).join('');$('group').value=group;$('done-user').value=meta.config.done_user.join(' ');$('not-done-user').value=meta.config.not_done_user.join(' ');for(const key of ['type','activity_type','work_center','abc','condition']){const old=[...$(key).selectedOptions].map(o=>o.value);$(key).innerHTML=($(key).multiple?'':'<option value="">Todos</option>')+(meta.dimensions[key]||[]).map(v=>`<option>${esc(v)}</option>`).join('');for(const option of $(key).options)option.selected=old.includes(option.value);}
-$('sources').innerHTML=meta.files.length?meta.files.map(f=>`<p><b>${esc(f.name)}</b> · ${num(f.rows)} linhas · importado em ${esc(f.imported_at.replace('T',' '))}</p>`).join(''):'<p>Nenhuma fonte importada. Coloque as exportações na pasta data e clique em Atualizar.</p>';
+$('sources').innerHTML=meta.files.length?meta.files.map(f=>`<p><b>${esc(f.name)}</b> · ${num(f.rows)} linhas · importado em ${esc(f.imported_at.replace('T',' '))}</p>`).join(''):'<p>Nenhuma fonte importada. Defina as fontes em Configurações e atualize o plano preventivo.</p>';
 const warnings=['A IP18 é o cadastro mestre. A execução usa a IW39: sem confirmação final, a ocorrência conta como não executada.'];if(!meta.files.some(f=>f.kind==='IP18'))warnings.push('Importe a IP18 para carregar o cadastro mestre.');if(meta.files.some(f=>f.kind==='IP24'&&f.rows===5000))warnings.push('IP24 com 5.000 linhas: pode haver limite de exportação. Datas complementares vêm da IW39; a cobertura da programação depende dos arquivos importados.');$('limitations').textContent=warnings.join(' ');$('import').disabled=meta.job.running;
 renderGroupManager();if(meta.job.running&&!polling)pollImport();}
 const dateStorageKey='sap-plan-date-filter';
@@ -91,12 +91,7 @@ $('filters').onsubmit=run(async()=>{saveDateFilter();await report();});$('search
 $('clear').onclick=run(async()=>{clearFiltersKeepingDates();filterAssets();await report();});
 $('group-form').onsubmit=run(async()=>{await api('groups',{name:$('group-name').value,assets:selected()});await loadMeta();await report();message('Agrupamento salvo. Selecione-o no filtro Grupo de ativos.');});
 $('rules').onsubmit=run(async()=>{const codes=id=>$(id).value.trim().toUpperCase().split(/\s+/).filter(Boolean);await api('config',{done_user:codes('done-user'),not_done_user:codes('not-done-user'),plan_manter:meta.config.plan_manter,no_plan_extra:meta.config.no_plan_extra});await loadMeta();await report();message('Regras salvas. Indicadores recalculados.');});
-$('import').onclick=run(async()=>{
- const sources=await api('source-choices');
- $('source-options').innerHTML=sources.available.map(path=>`<option value="${esc(path)}"></option>`).join('');
- for(const kind of ['IP18','IW39','IP24','IH06'])$('source-'+kind).value=sources.choices[kind]||'';
- $('source-picker').hidden=false;
-});
+$('import').onclick=()=>{location.assign('/configuracoes#preventivo');};
 $('source-cancel').onclick=()=>{$('source-picker').hidden=true;};
 $('source-form').onsubmit=run(async()=>{
  const choices=Object.fromEntries(['IP18','IW39','IP24','IH06'].map(kind=>[kind,$('source-'+kind).value]));

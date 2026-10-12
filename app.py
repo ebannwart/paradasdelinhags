@@ -17,6 +17,8 @@ from werkzeug.exceptions import HTTPException
 import analytics
 import maintenance
 import sap_plan
+import failure_analysis
+import configuration
 from modalities import MODALITIES, LABELS, MODALITY_SQL
 from database import ACTIVE, TYPE, connect, initialize, normalize
 from importer import TYPES, import_file, rebuild_events
@@ -35,6 +37,8 @@ def create_app(db_path=None, source_dir=None):
                       DB_PATH=str(db_path or data_dir / 'paradas.sqlite3'), SOURCE_DIR=Path(source_dir or ROOT))
     initialize(app.config['DB_PATH'])
     sap_plan.register(app, data_dir)
+    failure_analysis.register(app)
+    configuration.register(app)
     job_lock = threading.Lock()
     job = {'running': False, 'completed': 0, 'total': 0, 'current': '', 'results': []}
     job_state_lock = threading.Lock()
@@ -57,6 +61,11 @@ def create_app(db_path=None, source_dir=None):
         return jsonify(error='Não foi possível concluir a operação. Consulte o log da aplicação.'), 500
 
     @app.get('/')
+    def welcome():
+        session.setdefault('csrf', secrets.token_hex(32))
+        return render_template('welcome.html', csrf=session['csrf'])
+
+    @app.get('/ofensores')
     @app.get('/kpi-manutencao')
     def index():
         session.setdefault('csrf', secrets.token_hex(32))
@@ -214,6 +223,14 @@ def create_app(db_path=None, source_dir=None):
         if not isinstance(names,list) or any(n not in available for n in names): raise ValueError('Arquivo não disponível na pasta do projeto.')
         return start_import([(available[n],n) for n in dict.fromkeys(names)])
 
+    @app.post('/api/import/configured')
+    def import_configured():
+        paths = [Path(p) for p in configuration.read_sources(app.config['DB_PATH'])['stops']]
+        if not paths: raise ValueError('Configure os arquivos de paradas antes de importar.')
+        for path in paths:
+            if not path.is_file(): raise ValueError(f'Arquivo não encontrado: {path}')
+        return start_import([(p,p.name) for p in paths])
+
     @app.post('/api/import/upload')
     def import_upload():
         uploads = request.files.getlist('files')
@@ -284,5 +301,5 @@ def create_app(db_path=None, source_dir=None):
 if __name__ == '__main__':
     from waitress import serve
     port = int(os.environ.get('PARADAS_PORT','5000'))
-    print(f'Paradas de Linha: http://127.0.0.1:{port}',flush=True)
+    print(f'Governança GGOP/GS - GDM: http://127.0.0.1:{port}',flush=True)
     serve(create_app(),host='127.0.0.1',port=port,threads=6)

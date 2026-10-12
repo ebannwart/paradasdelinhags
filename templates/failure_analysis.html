@@ -1,0 +1,53 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="csrf-token" content="{{ csrf }}">
+  <title>Análises de falha · Governança GGOP/GS - GDM</title>
+  <link rel="stylesheet" href="{{ url_for('static',filename='app.css') }}">
+  <link rel="stylesheet" href="{{ url_for('static',filename='failure_analysis.css') }}">
+  <script defer src="{{ url_for('static',filename='failure_analysis.js') }}"></script>
+<link rel="stylesheet" href="/static/sidebar.css"><script src="/static/sidebar.js"></script></head>
+<body>
+<aside class="sidebar">
+  <a class="brand" href="/" aria-label="Governança GGOP/GS - GDM"><span class="brand-icon">▥</span><span class="brand-name">Governança<span class="brand-sub">GGOP/GS - GDM</span></span></a>
+  <div class="nav-label">ESPAÇO DE ANÁLISE</div>
+  <nav aria-label="Navegação principal">
+    <a class="nav" href="/ofensores">▤ &nbsp; Ofensores</a>
+    <a class="nav" href="/kpi-manutencao">◷ &nbsp; KPI manutenção</a>
+    <a class="nav" href="/plano-manutencao">✓ &nbsp; Plano Manter</a>
+    <a class="nav active" href="/analises-de-falha" aria-current="page">◎ &nbsp; Análises de falha</a>
+  <a class="nav" href="/configuracoes">⚙ &nbsp; Configurações</a></nav>
+  <div class="sidebar-bottom"><span class="status-dot"></span> Uso local<p>Histórico e acompanhamento neste computador.</p><a href="/api/backup">Baixar cópia de segurança ↗</a></div>
+</aside>
+<main class="failure-main">
+  <header class="page-header"><div><div class="eyebrow">GESTÃO MENSAL DA UNIDADE</div><h1>Análises de falha</h1><p>Da ocorrência à ação. Acompanhe o que ainda precisa avançar.</p></div><button id="refresh-source" class="button primary">Atualizar análises</button></header>
+  <div id="message" role="status" aria-live="polite"></div>
+  <section class="panel failure-filters" aria-label="Filtros">
+    <div class="section-line"><h2>Recorte do acompanhamento</h2><span id="source-info" class="muted">Carregando base…</span></div>
+    <div class="failure-filter-grid">
+      <label>Linha<select id="line"><option value="">Todas as linhas</option></select></label>
+      <label>Mês da ocorrência<select id="month"></select></label>
+      <label>Centro de trabalho<select id="work-center"><option value="">Todos</option></select></label>
+      <label>Perda de produção<select id="production-loss"><option value="">Todas</option><option value="marked">Marcada (X)</option><option value="unmarked">Não marcada</option><option value="unknown">Não informada na base</option></select></label>
+      <label>Status da análise<select id="analysis"><option value="">Todos</option><option>Em análise</option><option>Falha analisada</option><option>Concluída</option><option>Dispensada</option><option>Não classificada</option></select></label>
+      <label>Situação da ação<select id="action"><option value="">Todas</option><option>Vencida</option><option>Aberta no prazo</option><option>Aberta sem prazo</option><option>Concluída</option><option>Concluída com atraso</option><option>Status não identificado</option></select></label>
+    </div>
+    <div class="failure-filter-bottom"><label class="search-field">Buscar nota, falha ou local<input id="search" type="search" placeholder="Ex.: correia, encoder, 40004370889"></label><p>Data e mês: “Dta. parada processo” do ZPMX. Tempo de parada: “Dur. parada processo”. Perda de produção: marcação original do relatório. Vencimentos avaliados hoje.</p></div>
+  </section>
+  <section id="metrics" class="failure-metrics" aria-label="Resumo do mês"></section>
+  <div class="failure-workspace">
+    <section class="panel failure-list">
+      <div class="failure-tabs" role="group" aria-label="Visualização"><button class="selected" data-tab="month">Ocorrências do mês <span id="month-count">0</span></button><button data-tab="backlog">Pendências anteriores <span id="backlog-count">0</span></button><button data-tab="completed">Concluídas <span id="completed-count">0</span></button><button data-tab="all">Todas <span id="all-count">0</span></button><button data-tab="meeting">Registro mensal</button></div>
+      <div id="listing"><div class="section-line list-heading"><div><h2 id="list-title">Ocorrências do mês</h2><p id="list-help"></p></div><button id="export" class="button secondary">Exportar ações CSV</button></div><div id="occurrences"></div><div id="pagination" class="pagination"></div></div>
+      <section id="meeting-panel" hidden class="meeting-panel"><h2>Registro do acompanhamento mensal</h2><p id="meeting-context">Selecione uma linha e um mês.</p><label>Decisões, responsáveis e próximos prazos<textarea id="meeting-text" rows="12" maxlength="20000" placeholder="Registre as notas discutidas, os encaminhamentos, responsáveis e prazos combinados."></textarea></label><div class="section-line"><span id="meeting-saved" class="muted"></span><button id="save-meeting" class="button primary">Salvar registro</button></div><p class="muted">As anotações são compartilhadas entre importações. Elas não alteram os status originais do SAP.</p></section>
+    </section>
+    <aside class="failure-context">
+      <section class="panel context-card"><span class="eyebrow">CICLO DE ACOMPANHAMENTO</span><h2>Prioridades da reunião</h2><ol><li>Conferir as dispensas de análise.</li><li>Destravar investigações em andamento.</li><li>Revisar ações vencidas e seus responsáveis.</li><li>Verificar a eficácia das ações concluídas.</li></ol></section>
+      <section class="panel context-card"><h2>Histórico da base</h2><label>Importação<select id="snapshot"></select></label><p id="snapshot-details" class="muted"></p><a href="/configuracoes#falhas">Configurar arquivo e ajustes</a><label hidden class="button secondary upload-label">Importar arquivo<input id="upload" type="file" accept=".xls,.txt" aria-label="Importar arquivo ZPMX"></label><p class="muted">Cada arquivo diferente gera uma versão. As versões anteriores permanecem disponíveis.</p></section>
+      <section class="panel context-card"><h2>Leitura dos dados</h2><p>Uma ocorrência por nota. Ações distintas são preservadas, mesmo com número reutilizado.</p><p>Duração na unidade original do relatório, ainda não confirmada.</p><details><summary id="quality-summary">Qualidade da importação</summary><div id="quality"></div></details></section>
+    </aside>
+  </div>
+</main>
+<dialog id="detail"><div class="detail-top"><span class="eyebrow">DETALHE DA OCORRÊNCIA</span><button id="close-detail" class="button secondary" aria-label="Fechar detalhes">Fechar ×</button></div><div id="detail-body"></div></dialog>
+</body></html>

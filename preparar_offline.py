@@ -1,4 +1,4 @@
-"""Bundle installed, audited dependencies without executables or private data."""
+"""Bundle installed, audited dependencies without executables or the local database."""
 from datetime import datetime
 from importlib.metadata import distribution
 from pathlib import Path
@@ -36,7 +36,7 @@ def build():
     for pattern in ('*.py', '*.md', '*.bat', '[0-9][0-9][0-9][0-9].xlsx', 'requirements.txt'):
         for source in ROOT.glob(pattern):
             shutil.copy2(source, app / source.name)
-    for folder in ('static', 'templates', 'tests'):
+    for folder in ('static', 'templates', 'tests', 'Importacao'):
         shutil.copytree(ROOT / folder, app / folder, ignore=shutil.ignore_patterns('__pycache__', '*.pyc'))
     (app / 'DEPENDENCIAS-OFFLINE.txt').write_text('\n'.join(manifest)+'\n', encoding='utf-8')
     archive = destination / 'ParadasDeLinha-offline.zip'

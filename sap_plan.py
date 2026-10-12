@@ -329,12 +329,14 @@ def register(app, data_dir):
 
     @app.get('/api/sap/source-choices')
     def sap_source_choices():
-        available = sorted(p.resolve() for p in data_dir.glob('*.xlsx') if not p.name.startswith('~$'))
+        source_directory = app.config['SOURCE_DIR'] / 'Importacao'
+        available = sorted(p.resolve() for folder in (data_dir, source_directory) for p in folder.glob('*.xlsx') if not p.name.startswith('~$'))
         with connect(app.config['DB_PATH']) as db:
             saved = dict(db.execute('SELECT kind,path FROM sap_source_choices').fetchall())
         available = sorted(set(available) | {Path(p) for p in saved.values() if p and Path(p).is_file()})
         choices = {}
-        for kind in ('IP18', 'IW39', 'IP24', 'IH06'):
+        for kind in ('IP18', 'IW39', 'IP24', 'IH06', 'IW49N'):
+            if kind == 'IW49N' and kind not in saved and not any(p.name.startswith(kind) for p in available): continue
             candidates = [p for p in available if p.name.split(' ')[0].upper() == kind]
             choices[kind] = saved.get(kind, str(candidates[0]) if len(candidates) == 1 else '')
         return jsonify(choices=choices, available=[str(p) for p in available], directory=str(data_dir.resolve()))
@@ -342,7 +344,10 @@ def register(app, data_dir):
     @app.post('/api/sap/import')
     def sap_import():
         choices = (request.get_json() or {}).get('choices')
-        if not isinstance(choices, dict) or set(choices) != {'IP18','IW39','IP24','IH06'}:
+        if choices is None:
+            from configuration import read_sources
+            choices = {k:read_sources(app.config['DB_PATH'])['plan'].get(k,'') for k in ('IP18','IW39','IP24','IH06','IW49N')}
+        if not isinstance(choices, dict) or not {'IP18','IW39','IP24','IH06'} <= set(choices) or not set(choices) <= {'IP18','IW39','IP24','IH06','IW49N'}:
             raise ValueError('Selecione os arquivos das quatro fontes SAP; deixe em branco as fontes que não deseja atualizar.')
         selected_files, paths = [], {}
         for kind, value in choices.items():

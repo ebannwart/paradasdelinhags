@@ -1,0 +1,23 @@
+.sidebar-enabled body > main{padding-top:80px}
+.sidebar-enabled .sidebar{overflow-y:auto}
+.sidebar-toggle{position:fixed;top:16px;left:252px;z-index:100;background:#fff;color:#284b59;border:1px solid #cbd9df;border-radius:8px;box-shadow:0 2px 8px #102d3b12;padding:9px 13px;display:flex;align-items:center;gap:9px;font-size:12px;font-weight:650;min-height:40px}
+.sidebar-toggle:hover{background:#e9f3f1;border-color:#86b9b0}
+.sidebar-toggle:focus-visible{outline:3px solid #147d75;outline-offset:3px}
+.sidebar-toggle span{font-size:17px;line-height:1}
+.sidebar-collapsed body > .sidebar{display:none}
+.sidebar-collapsed body > main{margin-left:0;max-width:none}
+.sidebar-collapsed .sidebar-toggle{left:34px}
+@media(min-width:1650px){.sidebar-toggle{left:268px}.sidebar-collapsed .sidebar-toggle{left:50px}}
+@media(max-width:1150px){.sidebar-toggle{left:200px}.sidebar-collapsed .sidebar-toggle{left:20px}}
+@media(max-width:760px){
+  .sidebar-enabled body > .sidebar{padding-top:72px}
+  .sidebar-enabled body > .sidebar nav{flex-wrap:wrap}
+  .sidebar-enabled body > .sidebar .nav{width:auto;flex:1 1 130px}
+  .sidebar-enabled body > main{padding-top:24px}
+  .sidebar-collapsed body > main{padding-top:80px}
+  .sidebar-enabled .sidebar-toggle{left:14px;top:14px}
+}
+@media print{.sidebar-toggle,.sidebar-enabled body > .sidebar{display:none!important}.sidebar-enabled body > main{margin-left:0;padding-top:0}}
+
+/* Identidade da aplicação em todas as rotas. */
+.brand .brand-icon{flex-shrink:0}.brand .brand-name{font-size:20px}.brand .brand-sub{font-size:10px;letter-spacing:.7px}

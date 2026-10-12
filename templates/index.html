@@ -3,26 +3,30 @@
 <head>
   <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="csrf-token" content="{{ csrf }}">
-  <title>Paradas de Linha · Análise operacional</title>
+  <title>Governança GGOP/GS - GDM · Análise operacional</title>
   <link rel="stylesheet" href="{{ url_for('static',filename='app.css') }}">
   <script defer src="/vendor/plotly.js"></script>
   <script defer src="{{ url_for('static',filename='app.js') }}"></script>
-</head>
+<link rel="stylesheet" href="/static/sidebar.css"><script src="/static/sidebar.js"></script></head>
 <body>
 <aside class="sidebar">
-  <a class="brand" href="/" aria-label="Paradas de Linha"><span class="brand-icon">▥</span><span>Paradas<span class="brand-sub">DE LINHA</span></span></a>
+  <a class="brand" href="/" aria-label="Governança GGOP/GS - GDM"><span class="brand-icon">▥</span><span class="brand-name">Governança<span class="brand-sub">GGOP/GS - GDM</span></span></a>
   <div class="nav-label">ESPAÇO DE ANÁLISE</div>
   <nav aria-label="Navegação principal">
-    <button class="nav active" data-view="dashboard"><span>▤</span> Visão geral</button>
+    <a class="nav active" id="nav-offenders" href="/ofensores"><span>▤</span> Ofensores</a>
     <button class="nav" data-view="maintenance"><span>◷</span> KPI manutenção</button>
-    <a class="nav" href="/plano-manutencao"><span>✓</span> Realização do plano</a>
-    <button class="nav" data-view="records"><span>☷</span> Lançamentos</button>
-    <button class="nav" data-view="offenders"><span>◎</span> Ofensores</button>
-    <button class="nav" data-view="files"><span>▱</span> Arquivos e ajustes</button>
+    <a class="nav" href="/plano-manutencao"><span>✓</span> Plano Manter</a>
+    <a class="nav" href="/analises-de-falha"><span>◎</span> Análises de falha</a>
+    <a class="nav" href="/configuracoes"><span>▱</span> Configurações</a>
   </nav>
   <div class="sidebar-bottom"><span class="status-dot"></span> Uso local <p>Seus dados neste computador.</p><a href="/api/backup">Baixar cópia de segurança ↗</a></div>
 </aside>
 <main>
+  <nav id="offender-tabs" class="offender-tabs" aria-label="Seções de Ofensores">
+    <button type="button" data-view="dashboard">Visão Geral</button>
+    <button type="button" data-view="records">Lançamentos</button>
+    <button type="button" data-view="offenders">Gerenciamento Ofensores</button>
+  </nav>
   <header class="page-header"><div><div class="eyebrow">INTELIGÊNCIA OPERACIONAL</div><h1 id="page-title">Visão geral</h1><p id="page-description">Entenda as paradas. Encontre as recorrências.</p></div><button class="button secondary" id="export">↓ Exportar dados filtrados</button></header>
   <section id="filters-panel" class="panel filters" aria-label="Filtros da análise">
     <div class="section-line"><h2>Recorte da análise</h2><button class="text-button" id="clear-filters">Limpar filtros</button></div>
@@ -70,12 +74,13 @@
   </section>
 
   <section id="view-maintenance" class="view" hidden>
+    <div class="maintenance-line-picker"><h2>Selecione a linha</h2><div id="maintenance-line-cards" class="maintenance-line-cards" role="group" aria-label="Linha dos indicadores"></div></div>
     <section class="panel padded maintenance-controls">
-      <form id="maintenance-form"><label>Linha<select id="maintenance-equipment" aria-label="Linha dos indicadores" required></select></label><label>Arquivos da análise<select id="maintenance-files" multiple aria-label="Arquivos dos indicadores"></select><span class="field-help">Sem seleção = todos os arquivos importados.</span></label><button class="button primary" type="submit">Atualizar indicadores</button></form>
+      <form id="maintenance-form"><select id="maintenance-equipment" aria-label="Linha dos indicadores" hidden></select><label>Arquivos da análise<select id="maintenance-files" multiple aria-label="Arquivos dos indicadores"></select><span class="field-help">Sem seleção = todos os arquivos importados.</span></label><button class="button primary" type="submit">Atualizar indicadores</button></form>
       <p class="field-help">O histórico anual usa as fontes selecionadas. À direita, os meses do ano mais recente dessas fontes. Estes indicadores usam todos os lançamentos da linha, sem os filtros de descrição ou ofensor da visão geral.</p>
     </section>
     <div id="maintenance-context" class="notice" aria-live="polite"></div>
-    <section class="panel padded target-panel">
+    <p><a href="/configuracoes#paradas">Configurar metas dos indicadores</a></p><section class="panel padded target-panel" hidden>
       <div class="section-line"><div><h2>Metas da linha <span id="target-equipment">—</span></h2><p class="muted">Uma meta por indicador e por linha, aplicada aos gráficos anual e mensal.</p></div><span class="badge">SALVAS NESTE COMPUTADOR</span></div>
       <form id="targets-form"><fieldset id="targets-fields"><label>IMC máximo (%)<input id="target-imc" type="number" min="0" max="100" step="any" placeholder="Sem meta"></label><label>DGFM mínimo (%)<input id="target-dgfm" type="number" min="0" max="100" step="any" placeholder="Sem meta"></label><label>MTBF mínimo (h)<input id="target-mtbf" type="number" min="0" step="any" placeholder="Sem meta"></label><label>MTTR máximo (min)<input id="target-mttr" type="number" min="0" step="any" placeholder="Sem meta"></label><label>Eventos máximos/mês<input id="target-failure_events" type="number" min="0" step="any" placeholder="Sem meta"></label><button class="button primary" type="submit">Salvar metas</button></fieldset></form>
       <p class="field-help">A linha pontilhada representa a meta. Campos vazios removem a meta do indicador desta linha. Para DGFM e MTBF, maior é melhor; para IMC, MTTR e eventos de falha, menor é melhor.</p>
@@ -84,7 +89,7 @@
     <p class="footnote">* Período parcial. Barras ausentes representam valores indisponíveis. Verde indica meta atendida; terracota indica resultado fora da meta. Sem meta, cada indicador usa sua própria cor.</p>
     <details class="panel padded methodology" open><summary>Como calculamos os indicadores</summary>
       <div class="formula-definitions"><p><strong>T = tempo calendário:</strong> 24 × 60 minutos por dia, incluindo sábados, domingos e feriados. Os limites são os dias abrangidos pelas datas de início das fontes selecionadas, do início do primeiro dia ao fim do último dia. Não usamos somente o intervalo entre a primeira e a última falha da linha.</p>
-      <p><strong>C = minutos de ME + MM.</strong> <strong>P = minutos de Preventiva</strong> (manutenção preventiva + reparo geral). <strong>N = eventos distintos com minutos de ME ou MM</strong>, agrupados pela tolerância cadastrada em Arquivos e ajustes. ME e MM no mesmo evento contam como uma falha.</p>
+      <p><strong>C = minutos de ME + MM.</strong> <strong>P = minutos de Preventiva</strong> (manutenção preventiva + reparo geral). <strong>N = eventos distintos com minutos de ME ou MM</strong>, agrupados pela tolerância cadastrada em Configurações. ME e MM no mesmo evento contam como uma falha.</p>
       <p><strong>IMC = [C / T] × 100.</strong> Percentual do tempo calendário perdido em paradas corretivas (ME + MM). Quanto menor, melhor.</p>
       <p><strong>DGFM = [1 − (C + P) / T] × 100.</strong> Disponibilidade descontando corretivas, preventivas e reparo geral.</p>
       <p><strong>MTBF = (T − C) / N / 60 horas.</strong> Usa o tempo calendário sem paradas corretivas por evento de falha. Inclui os tempos de OP, ST, PP, EX e Preventiva nessa base; não representa horas efetivas de produção.</p>

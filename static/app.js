@@ -56,7 +56,10 @@ async function loadMeta() {
   ['year','equipment','responsible'].forEach(k => options('f-'+k,simpleOptions(meta[k])));
   options('f-month',months.map((v,i)=>({value:String(i+1),label:v})));
   options('f-modality',meta.modalities.map(m=>({value:m,label:m+' · '+meta.modality_labels[m]})));
-  options('maintenance-equipment',simpleOptions(meta.equipment));
+  const preferredLines=['LZG1','LCI1','LIN1','LCT1G','LPR1','LSL1','LBT2'];
+  const orderedLines=[...preferredLines.filter(line=>meta.equipment.includes(line)),...meta.equipment.filter(line=>!preferredLines.includes(line))];
+  options('maintenance-equipment',simpleOptions(orderedLines));
+  renderMaintenanceLines();
   options('maintenance-files',meta.files.map(f=>({value:String(f.id),label:f.name})));
   options('f-files',meta.files.map(f=>({value:String(f.id),label:f.name})));
   options('f-offender',[{value:'none',label:'Não classificado'},...meta.offenders.map(o=>({value:String(o.id),label:o.name}))]);
@@ -65,13 +68,25 @@ async function loadMeta() {
   $('tolerance').value = meta.tolerance;
   renderOffenders(); renderFiles(); writeFilters();
 }
-const viewInfo = {dashboard:['Visão geral','Entenda as paradas. Encontre as recorrências.'],maintenance:['KPI manutenção','Disponibilidade, confiabilidade e reparo. Metas por linha.'],records:['Lançamentos','Explore as descrições e classifique os problemas recorrentes.'],offenders:['Ofensores','Organize os problemas que merecem acompanhamento.'],files:['Arquivos e ajustes','Gerencie suas fontes e as regras de agrupamento.']};
+const viewInfo = {dashboard:['Visão geral','Entenda as paradas. Encontre as recorrências.'],maintenance:['KPI manutenção','Disponibilidade, confiabilidade e reparo. Metas por linha.'],records:['Lançamentos','Explore as descrições e classifique os problemas recorrentes.'],offenders:['Gerenciamento Ofensores','Organize os problemas que merecem acompanhamento.'],files:['Configurações','Gerencie suas fontes e as regras de agrupamento.']};
+function locationView(){
+  if(location.pathname==='/kpi-manutencao')return 'maintenance';
+  return {lancamentos:'records',gerenciamento:'offenders'}[new URLSearchParams(location.search).get('aba')] || 'dashboard';
+}
 async function showView(name, refresh=true) {
+  if(name==='files'){location.assign('/configuracoes');return;}
   currentView=name;
-  const path=name==='maintenance'?'/kpi-manutencao':'/';
-  if(location.pathname!==path)history.pushState({view:name},'',path);
+  const path=name==='maintenance'?'/kpi-manutencao':name==='records'?'/ofensores?aba=lancamentos':name==='offenders'?'/ofensores?aba=gerenciamento':'/ofensores';
+  if(location.pathname+location.search!==path)history.pushState({view:name},'',path);
   document.querySelectorAll('.view').forEach(v=>v.hidden=v.id!=='view-'+name);
   document.querySelectorAll('.nav').forEach(v=>v.classList.toggle('active',v.dataset.view===name));
+  $('nav-offenders').classList.toggle('active',name!=='maintenance');
+  $('offender-tabs').hidden=name==='maintenance';
+  document.querySelectorAll('#offender-tabs [data-view]').forEach(b=>{
+    b.classList.toggle('active',b.dataset.view===name);
+    if(b.dataset.view===name)b.setAttribute('aria-current','page');else b.removeAttribute('aria-current');
+  });
+  document.title=(name==='maintenance'?'KPI manutenção':'Ofensores · '+viewInfo[name][0])+' · Governança GGOP/GS - GDM';
   $('page-title').textContent=viewInfo[name][0]; $('page-description').textContent=viewInfo[name][1];
   $('filters-panel').hidden = !['dashboard','records'].includes(name);
   $('export').hidden = !['dashboard','records'].includes(name);
@@ -96,7 +111,7 @@ async function loadSummary() {
   $('date-range').textContent=t.records ? `${dateText(t.first_date)} — ${dateText(t.last_date)}` : 'Nenhum lançamento neste recorte';
   let notice = `Agrupamento: mesmo equipamento, intervalo de até ${fmt(meta.tolerance,1)} min. Datas usam o início do lançamento. Meses sem registros nas fontes selecionadas aparecem como lacunas; a presença de dados não garante um mês completo.`;
   if(t.overlaps) notice += ` Atenção: ${fmt(t.overlaps)} lançamentos filtrados têm sobreposição de horário. A soma dos minutos pode incluir tempos sobrepostos.`;
-  if(!meta.files.length) notice='Comece em “Arquivos e ajustes”: selecione e importe as planilhas que deseja analisar.';
+  if(!meta.files.length) notice='Comece em “Configurações”: selecione e importe as planilhas que deseja analisar.';
   $('analysis-notice').textContent=notice; $('analysis-notice').className='notice'+(t.overlaps ? ' warning':'');
   renderCharts();
 }
@@ -227,11 +242,15 @@ const maintenanceSpecs = {
   failure_events:{title:'Eventos de falha',unit:'eventos/mês',formula:'Anual = eventos distintos do ano / meses com dados · Mensal = eventos distintos do mês',direction:'max',color:'#527eab'}
 };
 let maintenanceData = null, maintenanceVersion=0;
+function renderMaintenanceLines() {
+  const selected=$('maintenance-equipment').value;
+  $('maintenance-line-cards').innerHTML=[...$('maintenance-equipment').options].map(option=>`<button type="button" class="maintenance-line-card" data-line="${esc(option.value)}" aria-pressed="${option.value===selected}">${esc(option.text)}</button>`).join('');
+}
 async function loadMaintenance() {
   const equipment=$('maintenance-equipment').value;
   const version=++maintenanceVersion;
   $('targets-fields').disabled=true;
-  if(!equipment){$('maintenance-context').textContent='Importe as planilhas em Arquivos e ajustes para calcular os indicadores.';return;}
+  if(!equipment){$('maintenance-context').textContent='Importe as planilhas em Configurações para calcular os indicadores.';return;}
   const data=await api('/api/maintenance',{equipment,files:[...$('maintenance-files').selectedOptions].map(o=>o.value)});
   if(version!==maintenanceVersion)return;
   maintenanceData=data;
@@ -306,7 +325,13 @@ $('maintenance-charts').addEventListener('click',run(async e=>{
   if(button)await showDetail(button.dataset.id);
 }));
 $('maintenance-form').addEventListener('submit',run(async e=>{e.preventDefault();await loadMaintenance();}));
-$('maintenance-equipment').addEventListener('change',run(loadMaintenance));
+$('maintenance-line-cards').addEventListener('click',run(async e=>{
+  const button=e.target.closest('[data-line]');
+  if(!button||button.dataset.line===$('maintenance-equipment').value)return;
+  $('maintenance-equipment').value=button.dataset.line;
+  $('maintenance-line-cards').querySelectorAll('[data-line]').forEach(card=>card.setAttribute('aria-pressed',String(card===button)));
+  await loadMaintenance();
+}));
 $('targets-form').addEventListener('submit',run(async e=>{
   e.preventDefault();
   if(!maintenanceData||maintenanceData.equipment!==$('maintenance-equipment').value)throw new Error('Atualize os indicadores da linha antes de salvar as metas.');
@@ -319,7 +344,7 @@ $('targets-form').addEventListener('submit',run(async e=>{
     toast('Metas salvas para a linha '+equipment+'.');
   }finally{$('targets-fields').disabled=false;}
 }));
-document.querySelectorAll('.nav[data-view]').forEach(b=>b.addEventListener('click',run(()=>showView(b.dataset.view))));
+document.querySelectorAll('[data-view]').forEach(b=>b.addEventListener('click',run(()=>showView(b.dataset.view))));
 $('filters-form').addEventListener('submit',run(async e=>{e.preventDefault();filters=readFilters();page=1;clearSelection();writeFilters();await refreshView();}));
 $('clear-filters').addEventListener('click',run(async()=>{filters={};page=1;clearSelection();writeFilters();await refreshView();}));
 ['metric','pareto-metric','pareto-labels','heatmap-metric','heatmap-group'].forEach(id=>$(id).addEventListener('change',renderCharts));$('stack').addEventListener('change',run(loadSummary));
@@ -357,5 +382,5 @@ $('files-body').addEventListener('click',run(async e=>{const b=e.target.closest(
 $('settings-form').addEventListener('submit',run(async e=>{e.preventDefault();const button=e.target.querySelector('button');button.disabled=true;try{await api('/api/settings',{tolerance:$('tolerance').value});await loadMeta();toast('Tolerância salva e eventos reagrupados.');}finally{button.disabled=false;}}));
 $('export').addEventListener('click',run(async()=>{const response=await api('/api/export',filters,true),blob=await response.blob(),url=URL.createObjectURL(blob),a=document.createElement('a');a.href=url;a.download='paradas_filtradas.csv';a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);toast('Exportação concluída.');}));
 window.addEventListener('resize',()=>{document.querySelectorAll('.view:not([hidden]) .chart').forEach(c=>{if(c.data)Plotly.Plots.resize(c);});});
-window.addEventListener('popstate',run(()=>showView(location.pathname==='/kpi-manutencao'?'maintenance':'dashboard')));
-run(async()=>{await loadMeta();if(meta.year.length)filters.year=[meta.year.at(-1)];writeFilters();await showView(location.pathname==='/kpi-manutencao'?'maintenance':meta.files.length?'dashboard':'files');await pollImport();})();
+window.addEventListener('popstate',run(()=>showView(locationView())));
+run(async()=>{await loadMeta();if(meta.year.length)filters.year=[meta.year.at(-1)];writeFilters();await showView(location.pathname==='/kpi-manutencao'||meta.files.length?locationView():'files');await pollImport();})();
