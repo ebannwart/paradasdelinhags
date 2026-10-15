@@ -190,4 +190,40 @@ class MaintenanceTests(unittest.TestCase):
         self.assertEqual(values,{'mttr':120,'failure_events':12.5})
 
 
-if __name__=='__main__':unittest.main()
+
+    def test_cs_totals_calendar_and_independent_events(self):
+        members=['LCI1','LIN1','LCT1G','LPR1','LSL1','LBT2']
+        rows=[]
+        for line in members:
+            rows += [row(equipment=line,start='2026-01-01 00:00',end='2026-01-01 00:00',minutes=0,responsible='OP'),
+                     row(equipment=line,start='2026-01-02 10:00',end='2026-01-02 11:00',minutes=60),
+                     row(equipment=line,start='2026-01-03 10:00',end='2026-01-03 11:00',minutes=30,responsible='PP',reason='MP'),
+                     row(equipment=line,start='2026-01-31 23:59',end='2026-01-31 23:59',minutes=0,responsible='OP')]
+        rows.append(row(equipment='LZG1',minutes=999))
+        self.load(rows)
+        data=self.report('CS'); month=data['monthly'][0];year=data['annual'][0]
+        total=31*1440*6
+        self.assertEqual(data['line_count'],6)
+        self.assertEqual(data['members'],members)
+        for period in (month,year):
+            self.assertEqual(period['calendar_minutes'],total)
+            self.assertEqual(period['corrective_minutes'],360)
+            self.assertEqual(period['preventive_minutes'],180)
+            self.assertEqual(period['failures'],6)
+            self.assertAlmostEqual(period['imc'],360/total*100)
+            self.assertAlmostEqual(period['dgfm'],(1-540/total)*100)
+            self.assertAlmostEqual(period['mtbf'],(total-360)/6/60)
+            self.assertEqual(period['mttr'],60)
+            self.assertEqual(period['failure_events'],6)
+        self.assertFalse(month['partial'])
+        self.assertEqual(self.report('LCI1')['monthly'][0]['calendar_minutes'],31*1440)
+        self.assertIsNone(data['monthly'][1]['imc'])
+        self.assertEqual(self.post('/api/maintenance/targets',{'equipment':'CS','targets':dict(imc=2,dgfm=95,mtbf=100,mttr=60,failure_events=10)}).status_code,200)
+        self.assertEqual(self.report('CS')['targets']['imc'],2)
+
+    def test_cs_missing_members_keeps_six_calendars_and_warns(self):
+        self.load([row(equipment='LCI1',minutes=60)])
+        month=self.report('CS')['monthly'][0]
+        self.assertEqual(month['calendar_minutes'],6*1440)
+        self.assertEqual(month['observed_lines'],['LCI1'])
+        self.assertTrue(any('1 de 6' in error for error in month['errors']))

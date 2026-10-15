@@ -6,6 +6,7 @@ from pathlib import Path
 
 from flask import jsonify, render_template, request, session
 from database import connect, ACTIVE
+from maintenance import LINE_GROUPS
 
 PLAN_KINDS = ('IH06', 'IP18', 'IP24', 'IW39', 'IW49N')
 
@@ -70,6 +71,7 @@ def register(app):
         with connect(path) as db:
             tolerance = float(db.execute("SELECT value FROM settings WHERE key='tolerance_seconds'").fetchone()[0]) / 60
             equipment = [r[0] for r in db.execute(f'SELECT DISTINCT r.equipment FROM records r WHERE {ACTIVE} ORDER BY r.equipment')]
+            equipment += [name for name,members in LINE_GROUPS.items() if any(line in equipment for line in members)]
             targets = [dict(r) for r in db.execute('SELECT * FROM maintenance_targets')]
             files = [dict(r) for r in db.execute('SELECT name,row_count,imported_at FROM files ORDER BY name')]
         return jsonify(sources=values, available=available, directory=str(root.resolve()),

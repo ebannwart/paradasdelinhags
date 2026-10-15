@@ -19,6 +19,7 @@ import maintenance
 import sap_plan
 import failure_analysis
 import configuration
+import offender_actions
 from modalities import MODALITIES, LABELS, MODALITY_SQL
 from database import ACTIVE, TYPE, connect, initialize, normalize
 from importer import TYPES, import_file, rebuild_events
@@ -39,6 +40,7 @@ def create_app(db_path=None, source_dir=None):
     sap_plan.register(app, data_dir)
     failure_analysis.register(app)
     configuration.register(app)
+    offender_actions.register(app)
     job_lock = threading.Lock()
     job = {'running': False, 'completed': 0, 'total': 0, 'current': '', 'results': []}
     job_state_lock = threading.Lock()

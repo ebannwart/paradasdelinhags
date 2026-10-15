@@ -140,3 +140,15 @@ No KPI manutencao, clique nas barras ou nos rotulos de mes/ano do IMC para consu
 Acesse **Realização do plano** no menu. A rota usa IP18 como mestre, IW39 para execução e duração, IP24 para programação e IH06 para nomes de locais. Consulte [SAP-PLANO.md](SAP-PLANO.md) para regras, filtros, agrupamentos e exportação Excel.
 
 O ZIP offline desta versão inclui esse módulo e suas dependências. O pacote inclui as fontes da pasta Importacao. O banco local, a chave de sessão e as preferências pessoais não são incluídos. Para preservar configurações e dados, transfira o backup SQLite por um meio interno autorizado; ao mudar de computador, revise os caminhos em **Configurações**.
+
+### Centro de Serviços e escalas dos KPIs
+
+O card **CS — Centro de Serviços** consolida LCI1, LIN1, LCT1G, LPR1, LSL1 e LBT2. O calendário de cada período corresponde a seis linhas em regime 24×7. Os minutos e eventos são somados e os KPIs recalculados a partir dos totais; não se usa média dos índices individuais. As metas do CS podem ser salvas em Configurações. A memória de cálculo sinaliza períodos sem lançamentos de alguma linha. Para cada indicador, os gráficos anual e mensal usam a mesma escala vertical, incluindo a meta.
+
+### Plano de ação dos ofensores
+
+Em `/ofensores?aba=acoes`, selecione um ofensor para ver automaticamente as análises e suas ações. O cruzamento usa a linha produtiva mapeada e a data/hora de início da parada de processo no SAP: esse instante deve coincidir com o início ou estar dentro do intervalo [início, fim) de um lançamento ativo classificado no ofensor. Não basta ocorrer no mesmo dia. Paradas que atravessam a meia-noite também são consideradas. O formulário mostra os lançamentos correspondentes para conferência. Se houver lançamentos coincidentes de diferentes ofensores, a análise pode aparecer em ambos; uma nota aparece apenas uma vez por ofensor.
+
+O vínculo automático é recalculado a cada consulta, acompanhando importações, classificações e regras de locais. Sem horário ou sem linha correspondente não há associação automática. A importação ZPMX versão 3 preserva o campo Hora parada processo; versões antigas precisam de reimportação para incorporar horários. Vínculos manuais anteriores são preservados e identificados. Ações vêm da última importação SAP, com responsável, prazo e status. Notas históricas de vínculos manuais são sinalizadas e excluídas do resumo atual.
+
+Use **Editar locais e linhas** (também em Configurações) para relacionar locais SAP ou prefixos às linhas. A regra mais específica prevalece, respeitando segmentos separados por hífen. Regras persistem no SQLite e no backup, inclusive listas vazias; novas importações não as sobrescrevem.

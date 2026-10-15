@@ -1,20 +1,25 @@
+{% set is_kpi = request.path == '/kpi-manutencao' %}
+{% set initial_view = 'maintenance' if is_kpi else {'acoes':'actions','lancamentos':'records','gerenciamento':'offenders'}.get(request.args.get('aba'), 'dashboard') %}
+{% set initial_titles = {'actions':'Plano de ação dos ofensores','maintenance':'KPI manutenção','dashboard':'Visão geral','records':'Lançamentos','offenders':'Gerenciamento Ofensores'} %}
+{% set initial_descriptions = {'actions':'Ações das análises de falha vinculadas automaticamente aos ofensores.','maintenance':'Disponibilidade, confiabilidade e reparo. Metas por linha.','dashboard':'Entenda as paradas. Encontre as recorrências.','records':'Explore as descrições e classifique os problemas recorrentes.','offenders':'Organize os problemas que merecem acompanhamento.'} %}
 <!doctype html>
 <html lang="pt-BR">
 <head>
   <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="csrf-token" content="{{ csrf }}">
-  <title>Governança GGOP/GS - GDM · Análise operacional</title>
+  <title>{{ initial_titles[initial_view] }} · Governança GGOP/GS - GDM</title>
   <link rel="stylesheet" href="{{ url_for('static',filename='app.css') }}">
+  <script defer src="/static/offender_actions.js"></script>
   <script defer src="/vendor/plotly.js"></script>
   <script defer src="{{ url_for('static',filename='app.js') }}"></script>
 <link rel="stylesheet" href="/static/sidebar.css"><script src="/static/sidebar.js"></script></head>
 <body>
 <aside class="sidebar">
-  <a class="brand" href="/" aria-label="Governança GGOP/GS - GDM"><span class="brand-icon">▥</span><span class="brand-name">Governança<span class="brand-sub">GGOP/GS - GDM</span></span></a>
+  <a class="brand" href="/" aria-label="Governança GGOP/GS - GDM"><img class="brand-logo" src="/static/csn-symbol-white.png" alt="CSN" width="48" height="36"><span class="brand-name">Governança<span class="brand-sub">GGOP/GS - GDM</span></span></a>
   <div class="nav-label">ESPAÇO DE ANÁLISE</div>
   <nav aria-label="Navegação principal">
-    <a class="nav active" id="nav-offenders" href="/ofensores"><span>▤</span> Ofensores</a>
-    <button class="nav" data-view="maintenance"><span>◷</span> KPI manutenção</button>
+    <button class="nav{% if is_kpi %} active{% endif %}" data-view="maintenance"><span>◷</span> KPI manutenção</button>
+    <a class="nav{% if not is_kpi %} active{% endif %}" id="nav-offenders" href="/ofensores"><span>▤</span> Ofensores</a>
     <a class="nav" href="/plano-manutencao"><span>✓</span> Plano Manter</a>
     <a class="nav" href="/analises-de-falha"><span>◎</span> Análises de falha</a>
     <a class="nav" href="/configuracoes"><span>▱</span> Configurações</a>
@@ -22,13 +27,14 @@
   <div class="sidebar-bottom"><span class="status-dot"></span> Uso local <p>Seus dados neste computador.</p><a href="/api/backup">Baixar cópia de segurança ↗</a></div>
 </aside>
 <main>
-  <nav id="offender-tabs" class="offender-tabs" aria-label="Seções de Ofensores">
+  <nav id="offender-tabs" class="offender-tabs" aria-label="Seções de Ofensores"{% if is_kpi %} hidden{% endif %}>
     <button type="button" data-view="dashboard">Visão Geral</button>
     <button type="button" data-view="records">Lançamentos</button>
     <button type="button" data-view="offenders">Gerenciamento Ofensores</button>
+    <button type="button" data-view="actions">Plano de ação dos ofensores</button>
   </nav>
-  <header class="page-header"><div><div class="eyebrow">INTELIGÊNCIA OPERACIONAL</div><h1 id="page-title">Visão geral</h1><p id="page-description">Entenda as paradas. Encontre as recorrências.</p></div><button class="button secondary" id="export">↓ Exportar dados filtrados</button></header>
-  <section id="filters-panel" class="panel filters" aria-label="Filtros da análise">
+  <header class="page-header"><div><div class="eyebrow">INTELIGÊNCIA OPERACIONAL</div><h1 id="page-title">{{ initial_titles[initial_view] }}</h1><p id="page-description">{{ initial_descriptions[initial_view] }}</p></div><button class="button secondary" id="export"{% if initial_view not in ['dashboard','records'] %} hidden{% endif %}>↓ Exportar dados filtrados</button></header>
+  <section id="filters-panel" class="panel filters" aria-label="Filtros da análise"{% if initial_view not in ['dashboard','records'] %} hidden{% endif %}>
     <div class="section-line"><h2>Recorte da análise</h2><button class="text-button" id="clear-filters">Limpar filtros</button></div>
     <form id="filters-form">
       <div class="filter-grid">
@@ -54,7 +60,25 @@
     <div id="active-filters" class="active-filters" aria-live="polite"></div>
   </section>
 
-  <section id="view-dashboard" class="view">
+  <section id="view-actions" class="view"{% if initial_view != 'actions' %} hidden{% endif %}>
+    <div class="panel padded">
+      <div class="filter-grid">
+        <label>Ofensor<select id="oa-offender"><option value="">Selecione um ofensor</option></select></label>
+        <label>Linha SAP<select id="oa-line"><option value="">Todas as linhas</option></select></label>
+        <label>Exibir<select id="oa-mode"><option value="linked">Ações vinculadas ao ofensor</option><option value="all">Buscar em todas as análises</option></select></label>
+        <label>Status da ação<select id="oa-status"><option value="">Todos</option><option>Abertas</option><option>Vencidas</option><option>Concluídas</option><option>Não identificado</option></select></label>
+        <label>Buscar nota, análise, ação ou responsável<input id="oa-search" type="search" placeholder="Número da nota ou texto"></label>
+      </div>
+      <p class="field-help">As ações são vinculadas automaticamente pela linha e pela data e hora de início da falha SAP, quando esse instante coincide com o início ou está dentro do intervalo de um lançamento classificado no ofensor. Não é necessário confirmar vínculos. Análises sem horário ou sem lançamento correspondente ficam sem vínculo automático.</p>
+      <button id="oa-edit-mappings" class="button secondary" type="button">Editar locais e linhas</button>
+      <button id="oa-refresh" class="button secondary" type="button">Atualizar ações</button>
+      <p id="oa-source" class="field-help"></p><p id="oa-message" role="status" aria-live="polite"></p>
+    </div>
+    <div id="oa-summary" class="notice"></div>
+    <div id="oa-results"></div>
+    <div class="actions"><button id="oa-prev" class="button secondary" type="button">Anterior</button><span id="oa-page"></span><button id="oa-next" class="button secondary" type="button">Próxima</button></div>
+  </section>
+  <section id="view-dashboard" class="view"{% if initial_view != "dashboard" %} hidden{% endif %}>
     <div class="section-line overview-line"><h2>Indicadores do período</h2><span id="date-range" class="muted"></span></div>
     <div class="kpis">
       <article class="kpi"><span>Tempo de parada</span><strong id="kpi-minutes">—</strong><small id="kpi-hours">minutos registrados</small></article>
@@ -73,7 +97,7 @@
     <p class="footnote">Clique nas barras para consultar os lançamentos. Minutos são somados conforme o Excel. Eventos com diferentes ofensores podem aparecer em mais de uma categoria; suas frequências não devem ser somadas.</p>
   </section>
 
-  <section id="view-maintenance" class="view" hidden>
+  <section id="view-maintenance" class="view"{% if initial_view != "maintenance" %} hidden{% endif %}>
     <div class="maintenance-line-picker"><h2>Selecione a linha</h2><div id="maintenance-line-cards" class="maintenance-line-cards" role="group" aria-label="Linha dos indicadores"></div></div>
     <section class="panel padded maintenance-controls">
       <form id="maintenance-form"><select id="maintenance-equipment" aria-label="Linha dos indicadores" hidden></select><label>Arquivos da análise<select id="maintenance-files" multiple aria-label="Arquivos dos indicadores"></select><span class="field-help">Sem seleção = todos os arquivos importados.</span></label><button class="button primary" type="submit">Atualizar indicadores</button></form>
@@ -88,7 +112,7 @@
     <div id="maintenance-charts"></div>
     <p class="footnote">* Período parcial. Barras ausentes representam valores indisponíveis. Verde indica meta atendida; terracota indica resultado fora da meta. Sem meta, cada indicador usa sua própria cor.</p>
     <details class="panel padded methodology" open><summary>Como calculamos os indicadores</summary>
-      <div class="formula-definitions"><p><strong>T = tempo calendário:</strong> 24 × 60 minutos por dia, incluindo sábados, domingos e feriados. Os limites são os dias abrangidos pelas datas de início das fontes selecionadas, do início do primeiro dia ao fim do último dia. Não usamos somente o intervalo entre a primeira e a última falha da linha.</p>
+      <div class="formula-definitions"><p><strong>CS — Centro de Serviços:</strong> reúne LCI1, LIN1, LCT1G, LPR1, LSL1 e LBT2. Soma os minutos e eventos das seis linhas e usa seis vezes o tempo calendário do período. Os índices são calculados sobre esses totais, não pela média dos índices individuais. A memória sinaliza linhas sem lançamentos; ausência de lançamento não comprova ausência de falha.</p><p><strong>T = tempo calendário:</strong> 24 × 60 minutos por dia, incluindo sábados, domingos e feriados. Os limites são os dias abrangidos pelas datas de início das fontes selecionadas, do início do primeiro dia ao fim do último dia. Não usamos somente o intervalo entre a primeira e a última falha da linha.</p>
       <p><strong>C = minutos de ME + MM.</strong> <strong>P = minutos de Preventiva</strong> (manutenção preventiva + reparo geral). <strong>N = eventos distintos com minutos de ME ou MM</strong>, agrupados pela tolerância cadastrada em Configurações. ME e MM no mesmo evento contam como uma falha.</p>
       <p><strong>IMC = [C / T] × 100.</strong> Percentual do tempo calendário perdido em paradas corretivas (ME + MM). Quanto menor, melhor.</p>
       <p><strong>DGFM = [1 − (C + P) / T] × 100.</strong> Disponibilidade descontando corretivas, preventivas e reparo geral.</p>
@@ -103,14 +127,14 @@
     <section class="panel padded audit-panel"><div class="section-line"><div><h2>Memória de cálculo</h2><p class="muted">Confira o denominador, as modalidades e a quantidade de eventos em cada período.</p></div></div><div class="table-wrap"><table><thead><tr><th>Período</th><th>Calendário (h)</th><th>ME (min)</th><th>MM (min)</th><th>Preventiva (min)</th><th>OP (min)</th><th>ST (min)</th><th>PP (min)</th><th>EX (min)</th><th>Falhas</th><th>Eventos/mês</th><th>Observações</th></tr></thead><tbody id="maintenance-audit"></tbody></table></div></section>
   </section>
 
-  <section id="view-records" class="view" hidden>
+  <section id="view-records" class="view"{% if initial_view != "records" %} hidden{% endif %}>
     <div class="section-line"><div><h2>Lançamentos de parada</h2><p id="records-count" class="muted"></p></div><button id="new-offender-quick" class="button secondary">+ Criar ofensor</button></div>
     <div class="panel bulk-bar"><div><strong id="selection-count">Nenhum selecionado</strong><div><button id="select-all-results" class="text-button">Selecionar todos os resultados filtrados</button><button id="clear-selection" class="text-button">Limpar seleção</button></div></div><label>Ofensor<select id="bulk-offender" aria-label="Ofensor para os selecionados"></select></label><button id="assign-offender" class="button primary">Aplicar ofensor</button><details class="bulk-type"><summary>Corrigir tipo</summary><select id="bulk-type" aria-label="Tipo para os selecionados"><option value="">Detecção automática</option><option>Demais paradas</option><option>Manutenção Preventiva</option><option>Reparo Geral</option></select><button class="button secondary" id="assign-type">Aplicar tipo</button></details></div>
     <div class="panel table-wrap"><table class="records-table"><thead><tr><th><input id="select-page" type="checkbox" aria-label="Selecionar a página atual"></th><th>Equipamento / início</th><th>Minutos</th><th>Modalidade / motivo</th><th>Observação</th><th>Ofensor</th><th></th></tr></thead><tbody id="records-body"></tbody></table></div>
     <div class="pagination"><span id="page-info"></span><div><button id="previous-page" class="button secondary">← Anterior</button><button id="next-page" class="button secondary">Próxima →</button></div></div>
   </section>
 
-  <section id="view-offenders" class="view" hidden>
+  <section id="view-offenders" class="view"{% if initial_view != "offenders" %} hidden{% endif %}>
     <div class="section-line"><div><h2>Seu catálogo de ofensores</h2><p class="muted">Crie categorias para acompanhar problemas recorrentes.</p></div><button id="new-offender" class="button primary">+ Novo ofensor</button></div>
     <div id="offenders-list" class="offenders-grid"></div>
   </section>
@@ -129,4 +153,15 @@
 <dialog id="issues-dialog"><div class="section-line"><h2>Validação do arquivo</h2><button class="close-dialog icon-button" aria-label="Fechar">×</button></div><div id="issues-content"></div></dialog>
 <div id="toast" role="status" aria-live="polite" hidden></div>
 <div id="loading" class="loading" hidden><span></span> Atualizando…</div>
+<dialog id="oa-mapping-dialog" aria-labelledby="oa-mapping-title">
+<form id="oa-mapping-form">
+<h2 id="oa-mapping-title">Locais de instalação e linhas de produção</h2>
+<p>Relacione cada local SAP à sua linha de produção. Um prefixo também abrange os locais abaixo dele; a regra mais específica tem prioridade.</p>
+<p class="field-help">As regras ficam salvas para as próximas importações e determinam os vínculos automáticos dos ofensores. Vínculos já confirmados são preservados.</p>
+<datalist id="oa-assets"></datalist>
+<div id="oa-mapping-rows"></div>
+<button id="oa-add-mapping" type="button" class="text-button">+ Adicionar local</button>
+<p id="oa-mapping-message" role="status" aria-live="polite"></p>
+<div class="actions"><button id="oa-cancel-mapping" type="button" class="button secondary">Cancelar</button><button id="oa-save-mapping" type="submit" class="button primary">Salvar relações</button></div>
+</form></dialog>
 </body></html>

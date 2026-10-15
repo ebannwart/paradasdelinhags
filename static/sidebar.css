@@ -21,3 +21,5 @@
 
 /* Identidade da aplicação em todas as rotas. */
 .brand .brand-icon{flex-shrink:0}.brand .brand-name{font-size:20px}.brand .brand-sub{font-size:10px;letter-spacing:.7px}
+
+.brand .brand-logo{display:block;width:48px;height:36px;object-fit:contain;flex-shrink:0;background:transparent;border-radius:0}.brand{gap:9px}

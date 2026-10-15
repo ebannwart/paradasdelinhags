@@ -58,6 +58,7 @@ async function loadMeta() {
   options('f-modality',meta.modalities.map(m=>({value:m,label:m+' · '+meta.modality_labels[m]})));
   const preferredLines=['LZG1','LCI1','LIN1','LCT1G','LPR1','LSL1','LBT2'];
   const orderedLines=[...preferredLines.filter(line=>meta.equipment.includes(line)),...meta.equipment.filter(line=>!preferredLines.includes(line))];
+  if(['LCI1','LIN1','LCT1G','LPR1','LSL1','LBT2'].some(line=>meta.equipment.includes(line)))orderedLines.push('CS');
   options('maintenance-equipment',simpleOptions(orderedLines));
   renderMaintenanceLines();
   options('maintenance-files',meta.files.map(f=>({value:String(f.id),label:f.name})));
@@ -68,15 +69,15 @@ async function loadMeta() {
   $('tolerance').value = meta.tolerance;
   renderOffenders(); renderFiles(); writeFilters();
 }
-const viewInfo = {dashboard:['Visão geral','Entenda as paradas. Encontre as recorrências.'],maintenance:['KPI manutenção','Disponibilidade, confiabilidade e reparo. Metas por linha.'],records:['Lançamentos','Explore as descrições e classifique os problemas recorrentes.'],offenders:['Gerenciamento Ofensores','Organize os problemas que merecem acompanhamento.'],files:['Configurações','Gerencie suas fontes e as regras de agrupamento.']};
+const viewInfo = {actions:['Plano de ação dos ofensores','Ações das análises de falha vinculadas automaticamente aos ofensores.'],dashboard:['Visão geral','Entenda as paradas. Encontre as recorrências.'],maintenance:['KPI manutenção','Disponibilidade, confiabilidade e reparo. Metas por linha.'],records:['Lançamentos','Explore as descrições e classifique os problemas recorrentes.'],offenders:['Gerenciamento Ofensores','Organize os problemas que merecem acompanhamento.'],files:['Configurações','Gerencie suas fontes e as regras de agrupamento.']};
 function locationView(){
   if(location.pathname==='/kpi-manutencao')return 'maintenance';
-  return {lancamentos:'records',gerenciamento:'offenders'}[new URLSearchParams(location.search).get('aba')] || 'dashboard';
+  return {acoes:'actions',lancamentos:'records',gerenciamento:'offenders'}[new URLSearchParams(location.search).get('aba')] || 'dashboard';
 }
 async function showView(name, refresh=true) {
   if(name==='files'){location.assign('/configuracoes');return;}
   currentView=name;
-  const path=name==='maintenance'?'/kpi-manutencao':name==='records'?'/ofensores?aba=lancamentos':name==='offenders'?'/ofensores?aba=gerenciamento':'/ofensores';
+  const path=name==='actions'?'/ofensores?aba=acoes':name==='maintenance'?'/kpi-manutencao':name==='records'?'/ofensores?aba=lancamentos':name==='offenders'?'/ofensores?aba=gerenciamento':'/ofensores';
   if(location.pathname+location.search!==path)history.pushState({view:name},'',path);
   document.querySelectorAll('.view').forEach(v=>v.hidden=v.id!=='view-'+name);
   document.querySelectorAll('.nav').forEach(v=>v.classList.toggle('active',v.dataset.view===name));
@@ -98,6 +99,7 @@ async function refreshView() {
   if(currentView==='offenders') renderOffenders();
   if(currentView==='files') renderFiles();
   if(currentView==='maintenance') await loadMaintenance();
+  if(currentView==='actions') await window.loadOffenderActions();
 }
 async function loadSummary() {
   const version=++requestVersion;
@@ -244,7 +246,7 @@ const maintenanceSpecs = {
 let maintenanceData = null, maintenanceVersion=0;
 function renderMaintenanceLines() {
   const selected=$('maintenance-equipment').value;
-  $('maintenance-line-cards').innerHTML=[...$('maintenance-equipment').options].map(option=>`<button type="button" class="maintenance-line-card" data-line="${esc(option.value)}" aria-pressed="${option.value===selected}">${esc(option.text)}</button>`).join('');
+  $('maintenance-line-cards').innerHTML=[...$('maintenance-equipment').options].map(option=>`<button type="button" class="maintenance-line-card" data-line="${esc(option.value)}" aria-pressed="${option.value===selected}">${esc(option.text)}${option.value==='CS'?'<small>Centro de Serviços</small>':''}</button>`).join('');
 }
 async function loadMaintenance() {
   const equipment=$('maintenance-equipment').value;
@@ -263,6 +265,7 @@ async function loadMaintenance() {
   if(latest)notice+=`${data.latest_year}: ${latest.months_with_data} mês(es) com dados da linha; ${fmt(latest.calendar_hours,1)} horas calendário consideradas${latest.partial?' (ano parcial)':''}. `;
   if(overlaps)notice+=`${fmt(overlaps)} ocorrências de lançamentos sobrepostos no histórico anual; a soma dos minutos pode incluir sobreposições. `;
   if(data.outside_minutes>.001)notice+=`${fmt(data.outside_minutes,2)} min ficam fora da cobertura das fontes e não entram nos indicadores. `;
+  if(data.line_count>1)notice=`CS — Centro de Serviços · ${data.members.join(', ')} · Calendário: ${data.line_count} linhas × 24h/dia. Indicadores calculados pelos totais do conjunto. `+notice;
   notice+='N = 0 deixa MTBF e MTTR sem valor. Meses sem dados não são tratados como 100% disponíveis.';
   $('maintenance-context').textContent=notice;
   $('maintenance-context').className='notice'+(overlaps?' warning':'');
@@ -278,6 +281,8 @@ function renderMaintenance() {
     return `<section class="maintenance-indicator"><div class="section-line"><div><h2>${spec.title}${key==='failure_events'?'':key==='imc'?' · Paradas corretivas':spec.unit==='%'?' · Disponibilidade':spec.unit==='min'?' · Minutos por falha':' · Horas por falha'}</h2><p class="formula">${esc(spec.formula)}</p></div></div><div class="maintenance-pair"><article class="panel chart-card"><div class="section-line"><div><h2>Histórico anual</h2><p>${key==='failure_events'?'Média mensal · eventos do ano ÷ meses com dados':'Índice calculado pelos totais de cada ano'}</p></div><span class="badge chart-target">${esc(targetText)}${target===null?'':' · '+new Date().getFullYear()}</span></div><div class="chart" id="maintenance-${key}-annual"></div></article><article class="panel chart-card"><div class="section-line"><div><h2>Mensal · ${data.latest_year??'—'}</h2><p>${key==='failure_events'?'Quantidade de eventos em cada mês':'Ano mais recente das fontes selecionadas'}</p></div><span class="badge chart-target">${esc(targetText)}</span></div><div class="chart" id="maintenance-${key}-monthly"></div></article></div>${key==='imc'?'<section class="panel padded imc-top-panel"><h2>Top 10 maiores paradas de manutenção</h2><p class="field-help">Clique em uma barra de mês ou ano do IMC. ME + MM por evento consolidado, ordenados pelos minutos dentro do período e dos arquivos selecionados. Preventivas e outras modalidades não entram. Datas abaixo são dos lançamentos corretivos; paradas que atravessam períodos têm seus minutos rateados como no IMC.</p><div id="imc-top-results" aria-live="polite">Selecione um mês ou ano no gráfico acima.</div></section>':''}</section>`;
   }).join('');
   for(const [key,spec] of Object.entries(maintenanceSpecs)) {
+    const sharedMax=Math.max(data.targets[key]??0,...[...data.annual,...data.monthly].map(r=>r[key]??0),1);
+    const sharedRange=[0,key==='dgfm'?Math.max(110,sharedMax*1.1):sharedMax*1.22];
     for(const scope of ['annual','monthly']) {
       const rows=scope==='annual'?data.annual:data.monthly;
       const currentYear=String(new Date().getFullYear());
@@ -290,9 +295,8 @@ function renderMaintenance() {
         r.partial?'Período parcial':'',r.errors.join(' '),r.months_with_data??1
       ]);
       const yaxis={title:{text:key==='failure_events'?'Eventos/mês':key==='imc'?'Paradas corretivas (%)':spec.unit==='%'?'Disponibilidade (%)':spec.unit==='min'?'Minutos':'Horas'},gridcolor:'#eaf0f3',rangemode:'tozero',automargin:true};
-      if(key==='imc')yaxis.range=[0,Math.max(target??0,...rows.map(r=>r[key]??0),1)*1.22];
-      else if(spec.unit==='%')yaxis.range=[0,110];
-      else if(target!==null)yaxis.range=[0,Math.max(target,...rows.map(r=>r[key]??0),1)*1.22];
+      yaxis.range=sharedRange;
+      yaxis.autorange=false;
       const layout={margin:{l:52,r:18,t:35,b:45},yaxis,xaxis:{type:'category',tickfont:{size:10},automargin:true},showlegend:false};
       if(rows.some(r=>r.records))layout.emptyMessage=rows.every(r=>!r.failures)&&spec.unit!=='%'?'Sem eventos de falha (N = 0)':'Índice indisponível; consulte a memória de cálculo';
       layout.shapes=target===null?[]:[{type:'line',xref:scope==='annual'?'x':'paper',
@@ -318,7 +322,7 @@ function renderImcTop(scope,period) {
   if(!row)return;
   const target=$('imc-top-results');
   const heading=`${maintenanceData.equipment} · ${period} · ${fmt(row.corrective_minutes,2)} min de ME + MM · ${fmt(row.failures)} eventos`;
-  target.innerHTML=`<h3>${esc(heading)}</h3>`+(row.top_stops.length?`<div class="table-wrap"><table><thead><tr><th>Posição</th><th>Início / fim</th><th>Modalidade</th><th>Minutos no período</th><th>Descrição dos lançamentos</th></tr></thead><tbody>${row.top_stops.map((stop,i)=>`<tr><td>${i+1}</td><td>${dateText(stop.start,true)}<small>Até ${dateText(stop.end,true)}</small></td><td>${esc(stop.modalities.join(' + '))}</td><td><strong>${fmt(stop.minutes,2)}</strong></td><td><details ${i===0?'open':''}><summary>${stop.rows.length} lançamento(s) · ${esc(stop.rows[0].observation||stop.rows[0].reason||'Sem descrição')}</summary>${stop.rows.map(r=>`<p><strong>${esc(r.modality)} · ${fmt(r.minutes,2)} min</strong> · ${esc(r.reason)}<br>${esc(r.observation||'Sem observação')}<br><button class="text-button imc-record-detail" data-id="${esc(r.id)}">Ver evento completo ↗</button></p>`).join('')}</details></td></tr>`).join('')}</tbody></table></div>`:'<p>Nenhuma parada corretiva de manutenção neste período.</p>');
+  target.innerHTML=`<h3>${esc(heading)}</h3>`+(row.top_stops.length?`<div class="table-wrap"><table><thead><tr><th>Posição</th><th>Início / fim</th><th>Modalidade</th><th>Minutos no período</th><th>Descrição dos lançamentos</th></tr></thead><tbody>${row.top_stops.map((stop,i)=>`<tr><td>${i+1}</td><td>${dateText(stop.start,true)}<small>Até ${dateText(stop.end,true)}</small></td><td>${esc(stop.modalities.join(' + '))}</td><td><strong>${fmt(stop.minutes,2)}</strong></td><td><details ${i===0?'open':''}><summary>${stop.rows.length} lançamento(s) · ${esc(stop.rows[0].observation||stop.rows[0].reason||'Sem descrição')}</summary>${stop.rows.map(r=>`<p><strong>${esc(r.equipment||maintenanceData.equipment)} · ${esc(r.modality)} · ${fmt(r.minutes,2)} min</strong> · ${esc(r.reason)}<br>${esc(r.observation||'Sem observação')}<br><button class="text-button imc-record-detail" data-id="${esc(r.id)}">Ver evento completo ↗</button></p>`).join('')}</details></td></tr>`).join('')}</tbody></table></div>`:'<p>Nenhuma parada corretiva de manutenção neste período.</p>');
 }
 $('maintenance-charts').addEventListener('click',run(async e=>{
   const button=e.target.closest('.imc-record-detail');
@@ -383,4 +387,4 @@ $('settings-form').addEventListener('submit',run(async e=>{e.preventDefault();co
 $('export').addEventListener('click',run(async()=>{const response=await api('/api/export',filters,true),blob=await response.blob(),url=URL.createObjectURL(blob),a=document.createElement('a');a.href=url;a.download='paradas_filtradas.csv';a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);toast('Exportação concluída.');}));
 window.addEventListener('resize',()=>{document.querySelectorAll('.view:not([hidden]) .chart').forEach(c=>{if(c.data)Plotly.Plots.resize(c);});});
 window.addEventListener('popstate',run(()=>showView(locationView())));
-run(async()=>{await loadMeta();if(meta.year.length)filters.year=[meta.year.at(-1)];writeFilters();await showView(location.pathname==='/kpi-manutencao'||meta.files.length?locationView():'files');await pollImport();})();
+run(async()=>{await showView(locationView(),false);await loadMeta();if(meta.year.length)filters.year=[meta.year.at(-1)];writeFilters();await showView(locationView()!=='dashboard'||meta.files.length?locationView():'files');await pollImport();})();

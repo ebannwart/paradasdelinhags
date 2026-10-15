@@ -23,6 +23,17 @@ def iso(value):
         raise ValueError(f'Data inválida no ZPMX: {value}') from exc
 
 
+def stop_time(value):
+    if not value:
+        return ''
+    for fmt in ('%H:%M:%S', '%H:%M'):
+        try:
+            return datetime.strptime(value.strip(), fmt).strftime('%H:%M:%S')
+        except ValueError:
+            pass
+    raise ValueError('Hora da parada inválida no ZPMX: ' + value)
+
+
 def duration_value(value):
     if not value:
         return None
@@ -85,6 +96,7 @@ def parse_export(content):
             raise ValueError(f'Nota {a["Nota"]}: duração inválida.') from exc
         base = dict(id=a['Nota'], description=a['Descrição da nota ZC'], asset=asset, line=line_code,
                     unit=unit or line_code, status=a['Status da Nota'], date=iso(a['Dta. parada processo']),
+                    time=stop_time(a.get('Hora parada processo', '')),
                     process_duration=process_duration, work_center=a.get('Cent. Trab. Resp.', ''),
                     production_loss=a.get('Perda de Produção') if 'Perda de Produção' in headers else None,
                     production_date=iso(a.get('Dta. parada Prod.', '')),
@@ -92,7 +104,7 @@ def parse_export(content):
         if not base['date']:
             raise ValueError(f'Nota {base["id"]}: data da parada ausente.')
         note = notes.setdefault(base['id'], dict(base, investigations=[], actions=[], sources=[]))
-        if any(note[k] != base[k] for k in ('asset', 'line', 'date', 'duration', 'status', 'process_duration', 'work_center', 'production_loss', 'production_date')):
+        if any(note[k] != base[k] for k in ('asset', 'line', 'date', 'time', 'duration', 'status', 'process_duration', 'work_center', 'production_loss', 'production_date')):
             raise ValueError(f'Nota {base["id"]}: dados de parada ou status divergentes entre linhas.')
         note['sources'].append(physical_row)
         inv = dict(item=a.get('Item', ''), symptom=a.get('Texto sintoma do dano', ''),
@@ -116,7 +128,7 @@ def parse_export(content):
         if len(keys) != len(set(keys)):
             warnings.append(f'Nota {note["id"]}: número de medida reutilizado; ações distintas preservadas.')
     return dict(notes=list(notes.values()), warnings=list(dict.fromkeys(warnings)), rows=row_count,
-                extended=bool(continuation), schema_version=2)
+                extended=bool(continuation), schema_version=3)
 
 
 def action_state(action, today):
@@ -147,7 +159,7 @@ def analysis_state(note):
 def import_snapshot(db_path, content, name):
     parsed = parse_export(content)
     # A new parser version creates a new snapshot instead of changing old history.
-    digest = hashlib.sha256(content + b'\0failure-schema-2').hexdigest()
+    digest = hashlib.sha256(content + b'\0failure-schema-3').hexdigest()
     with connect(db_path) as db:
         db.execute('BEGIN IMMEDIATE')
         existing = db.execute('SELECT id FROM failure_snapshots WHERE sha=?', (digest,)).fetchone()

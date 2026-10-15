@@ -6,6 +6,8 @@ from datetime import datetime, timedelta
 from database import ACTIVE
 from modalities import MODALITIES, MODALITY_SQL
 
+LINE_GROUPS = {'CS': ('LCI1', 'LIN1', 'LCT1G', 'LPR1', 'LSL1', 'LBT2')}
+
 INDICATORS = ('imc', 'dgfm', 'mtbf', 'mttr', 'failure_events')
 
 
@@ -22,9 +24,10 @@ def merge_windows(windows):
     return merged
 
 
-def period_bucket(period, windows):
+def period_bucket(period, windows, line_count=1):
     return {'period':period, 'windows':windows,
-            'calendar_minutes':sum((b-a).total_seconds()/60 for a,b in windows),
+            'calendar_minutes':sum((b-a).total_seconds()/60 for a,b in windows)*line_count,
+            'line_count':line_count, 'observed_lines':set(),
             'modalities':{key:0.0 for key in MODALITIES},
             'events':set(), 'records':set(), 'overlaps':set(), 'zero_duration':set(), 'corrective_rows':{}}
 
@@ -56,7 +59,9 @@ def calculate(bucket):
     if not has_data: errors.append('Sem lançamentos da linha neste período; disponibilidade não presumida.')
     if has_data and not corrective_ok: errors.append('ME + MM excede o tempo calendário; confira os lançamentos e sobreposições.')
     if has_data and not maintenance_ok: errors.append('ME + MM + Preventiva excede o tempo calendário; DGFM indisponível.')
-    return {'period':bucket['period'], 'calendar_minutes':total, 'calendar_hours':total/60,
+    if bucket['line_count']>1 and len(bucket['observed_lines'])<bucket['line_count']:
+        errors.append(f"CS: {len(bucket['observed_lines'])} de {bucket['line_count']} linhas com lançamentos; calendário considera todas as seis linhas.")
+    return {'line_count':bucket['line_count'], 'observed_lines':sorted(bucket['observed_lines']), 'period':bucket['period'], 'calendar_minutes':total, 'calendar_hours':total/60,
             'modalities':counts, 'corrective_minutes':corrective, 'preventive_minutes':preventive,
             'failures':failures, 'records':len(bucket['records']), 'overlaps':len(bucket['overlaps']),
             'zero_duration':len(bucket['zero_duration']),
@@ -72,7 +77,9 @@ def calculate(bucket):
 
 
 def report(db, equipment, file_ids=None):
-    if not equipment or not db.execute(f'SELECT 1 FROM records r WHERE r.equipment=? AND {ACTIVE} LIMIT 1',(equipment,)).fetchone():
+    members=LINE_GROUPS.get(equipment, (equipment,))
+    placeholders=','.join('?' for _ in members)
+    if not equipment or not db.execute(f'SELECT 1 FROM records r WHERE r.equipment IN ({placeholders}) AND {ACTIVE} LIMIT 1',members).fetchone():
         raise ValueError('Selecione uma linha importada.')
     file_ids=file_ids or []
     if not isinstance(file_ids,list): raise ValueError('Seleção de arquivos inválida.')
@@ -90,14 +97,14 @@ def report(db, equipment, file_ids=None):
             boundary=next_month(cursor)
             month_windows.setdefault(cursor.strftime('%Y-%m'),[]).append((max(start,cursor),min(end,boundary)))
             cursor=boundary
-    buckets={p:period_bucket(p,parts) for p,parts in month_windows.items()}
+    buckets={p:period_bucket(p,parts,len(members)) for p,parts in month_windows.items()}
     source_filter=ACTIVE
-    params=[equipment]
+    params=list(members)
     if file_ids:
         source_filter=f"EXISTS(SELECT 1 FROM sources s WHERE s.record_id=r.id AND s.file_id IN ({','.join('?' for _ in file_ids)}))"
         params+=file_ids
-    rows=db.execute(f'''SELECT r.id,r.start,r.end,r.minutes,r.event_id,r.overlap,r.observation,r.reason,{MODALITY_SQL} modality
-                        FROM records r WHERE r.equipment=? AND {source_filter} ORDER BY r.start''',params)
+    rows=db.execute(f'''SELECT r.id,r.equipment,r.start,r.end,r.minutes,r.event_id,r.overlap,r.observation,r.reason,{MODALITY_SQL} modality
+                        FROM records r WHERE r.equipment IN ({placeholders}) AND {source_filter} ORDER BY r.start''',params)
     outside_minutes=0.0
     for row in rows:
         start,end=datetime.fromisoformat(row['start']),datetime.fromisoformat(row['end'])
@@ -116,12 +123,13 @@ def report(db, equipment, file_ids=None):
                     allocated+=minutes
                     bucket['modalities'][row['modality']]+=minutes
                     bucket['records'].add(row['id'])
+                    bucket['observed_lines'].add(row['equipment'])
                     if row['overlap']: bucket['overlaps'].add(row['id'])
                     if duration==0 and row['minutes']>0:bucket['zero_duration'].add(row['id'])
                     if row['modality'] in ('ME','MM') and minutes>0:
                         bucket['events'].add(row['event_id'] or row['id'])
                         bucket['corrective_rows'][row['id']]={
-                            'id':row['id'],'event_id':row['event_id'] or row['id'],
+                            'id':row['id'],'equipment':row['equipment'],'event_id':row['event_id'] or row['id'],
                             'start':row['start'],'end':row['end'],'minutes':minutes,
                             'modality':row['modality'],'observation':row['observation'],'reason':row['reason']}
             cursor=boundary
@@ -131,10 +139,10 @@ def report(db, equipment, file_ids=None):
     for year in sorted({p[:4] for p in buckets}):
         source_months=[b for p,b in buckets.items() if p.startswith(year)]
         observed=[b for b in source_months if b['records']]
-        combined=period_bucket(year,[window for b in observed for window in b['windows']])
+        combined=period_bucket(year,[window for b in observed for window in b['windows']],len(members))
         for b in observed:
             for key in MODALITIES: combined['modalities'][key]+=b['modalities'][key]
-            for key in ('events','records','overlaps','zero_duration'): combined[key].update(b[key])
+            for key in ('events','records','overlaps','zero_duration','observed_lines'): combined[key].update(b[key])
             for record_id,row in b['corrective_rows'].items():
                 if record_id in combined['corrective_rows']:
                     combined['corrective_rows'][record_id]['minutes']+=row['minutes']
@@ -144,7 +152,7 @@ def report(db, equipment, file_ids=None):
         item['months_with_data']=len(observed)
         item['failure_events']=item['failures']/len(observed) if observed else None
         item['source_months']=len(source_months)
-        full_calendar=(366 if calendar.isleap(int(year)) else 365)*1440
+        full_calendar=(366 if calendar.isleap(int(year)) else 365)*1440*len(members)
         item['partial']=abs(item['calendar_minutes']-full_calendar)>.01
         annual.append(item)
     latest_year=max((int(f['max_date'][:4]) for f in files if f['max_date']),default=None)
@@ -152,19 +160,21 @@ def report(db, equipment, file_ids=None):
     if latest_year:
         for month in range(1,13):
             period=f'{latest_year}-{month:02d}'
-            item=monthly.get(period) or calculate(period_bucket(period,[]))
+            item=monthly.get(period) or calculate(period_bucket(period,[],len(members)))
             item['month']=month
-            item['partial']=0 < item['calendar_minutes'] < calendar.monthrange(latest_year,month)[1]*1440
+            item['partial']=0 < item['calendar_minutes'] < calendar.monthrange(latest_year,month)[1]*1440*len(members)
             latest_months.append(item)
     targets={key:None for key in INDICATORS}
     targets.update({r['indicator']:r['value'] for r in db.execute('SELECT indicator,value FROM maintenance_targets WHERE equipment=?',(equipment,))})
-    return {'equipment':equipment,'files':files,'annual':annual,'monthly':latest_months,'latest_year':latest_year,
+    return {'equipment':equipment,'members':list(members),'line_count':len(members),'files':files,'annual':annual,'monthly':latest_months,'latest_year':latest_year,
             'targets':targets,'outside_minutes':outside_minutes,
             'tolerance_minutes':int(db.execute("SELECT value FROM settings WHERE key='tolerance_seconds'").fetchone()[0])/60}
 
 
 def save_targets(db, equipment, targets):
-    if not equipment or not db.execute(f'SELECT 1 FROM records r WHERE r.equipment=? AND {ACTIVE} LIMIT 1',(equipment,)).fetchone():
+    members=LINE_GROUPS.get(equipment, (equipment,))
+    placeholders=','.join('?' for _ in members)
+    if not equipment or not db.execute(f'SELECT 1 FROM records r WHERE r.equipment IN ({placeholders}) AND {ACTIVE} LIMIT 1',members).fetchone():
         raise ValueError('Selecione uma linha importada.')
     if not isinstance(targets,dict) or set(targets)!=set(INDICATORS):
         raise ValueError('Informe as metas de todos os indicadores. Use vazio para remover uma meta.')

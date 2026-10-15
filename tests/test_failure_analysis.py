@@ -11,7 +11,7 @@ def export(rows, extended=True):
     first = ['', 'Nota', 'Descrição da nota ZC', 'Local de instalação', 'Unidade Operacional',
              'Status da Nota', 'Dta. parada processo', 'Dur. parada Prod.', 'Texto das Medidas',
              'Status Medida', 'Data planejada medida(fim)', 'Data conclusão Medida', 'Item',
-             'Dur. parada processo', 'Dta. parada Prod.', 'Cent. Trab. Resp.', 'Perda de Produção']
+             'Hora parada processo', 'Dur. parada processo', 'Dta. parada Prod.', 'Cent. Trab. Resp.', 'Perda de Produção']
     second = ['Texto', '', 'Item Medida', 'Porque 1', 'Porque 5']
     lines = ['Descrição Ocorrência e Análise Falha', '', '\t'.join(first)]
     if extended:
@@ -133,3 +133,12 @@ class FailureTests(unittest.TestCase):
 
 if __name__ == '__main__':
     unittest.main()
+
+    def test_stop_time_is_preserved_and_validated(self):
+        note=parse_export(export([{'Hora parada processo':'00:00:00'}]))['notes'][0]
+        self.assertEqual(note['time'],'00:00:00')
+        self.assertEqual(parse_export(export([{}]))['notes'][0]['time'],'')
+        with self.assertRaises(ValueError):
+            parse_export(export([{'Hora parada processo':'25:00:00'}]))
+        with self.assertRaises(ValueError):
+            parse_export(export([{'Hora parada processo':'10:00:00'},{'Hora parada processo':'11:00:00'}]))
