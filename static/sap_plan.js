@@ -4,6 +4,7 @@ const esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&
 const num=v=>Number(v).toLocaleString('pt-BR');
 const rate=v=>v===null?'—':num(v)+'%';
 const dt=v=>v?v.split('-').reverse().join('/'):'—';
+const planProfile=new URLSearchParams(location.search).get('profile')||'1';
 let meta={},version=0,polling=false,calendarData=[];
 let appliedPlanFilters=null,detailCode='',detailVersion=0;
 let selectedSummaryAsset=null,summaryData=null,summaryVersion=0;
@@ -30,7 +31,7 @@ function enableSummarySorting(id, rows, keys){
  apply();
 }
 function message(t,error=false){$('message').hidden=!t;$('message').textContent=t;$('message').className='notice'+(error?' warning':'');}
-async function api(path,body){const r=await fetch('/api/sap/'+path,body===undefined?{}:{method:'POST',headers:{'Content-Type':'application/json','X-CSRF-Token':document.querySelector('meta[name=csrf-token]').content},body:JSON.stringify(body)});const data=await r.json();if(!r.ok)throw Error(data.error||'Falha na solicitação.');return data;}
+async function api(path,body){const r=await fetch('/api/sap/'+path+'?profile='+encodeURIComponent(planProfile),body===undefined?{}:{method:'POST',headers:{'Content-Type':'application/json','X-CSRF-Token':document.querySelector('meta[name=csrf-token]').content},body:JSON.stringify(body)});const data=await r.json();if(!r.ok)throw Error(data.error||'Falha na solicitação.');return data;}
 function run(fn){return async e=>{if(e)e.preventDefault();try{await fn(e);}catch(err){message(err.message,true);}};}
 function selected(){return [...$('assets').selectedOptions].map(x=>x.value);}
 function filterAssets(){const keep=selected(),q=$('search').value.normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase();$('assets').innerHTML=(meta.assets||[]).filter(a=>keep.includes(a.asset)||(a.asset+' '+a.name).normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().includes(q)).map(a=>`<option value="${esc(a.asset)}" ${keep.includes(a.asset)?'selected':''}>${esc(a.name)} · ${esc(a.asset)}</option>`).join('');}
@@ -38,12 +39,12 @@ async function loadMeta(){meta=await api('meta');filterAssets();const group=$('g
 $('sources').innerHTML=meta.files.length?meta.files.map(f=>`<p><b>${esc(f.name)}</b> · ${num(f.rows)} linhas · importado em ${esc(f.imported_at.replace('T',' '))}</p>`).join(''):'<p>Nenhuma fonte importada. Defina as fontes em Configurações e atualize o plano preventivo.</p>';
 const warnings=['A IP18 é o cadastro mestre. A execução usa a IW39: sem confirmação final, a ocorrência conta como não executada.'];if(!meta.files.some(f=>f.kind==='IP18'))warnings.push('Importe a IP18 para carregar o cadastro mestre.');if(meta.files.some(f=>f.kind==='IP24'&&f.rows===5000))warnings.push('IP24 com 5.000 linhas: pode haver limite de exportação. Datas complementares vêm da IW39; a cobertura da programação depende dos arquivos importados.');$('limitations').textContent=warnings.join(' ');$('import').disabled=meta.job.running;
 renderGroupManager();if(meta.job.running&&!polling)pollImport();}
-const dateStorageKey='sap-plan-date-filter';
+const dateStorageKey='sap-plan-date-filter-'+planProfile;
 function saveDateFilter(){
  try{localStorage.setItem(dateStorageKey,JSON.stringify({from:$('from').value,to:$('to').value}));}catch(error){/* Storage can be unavailable in private environments. */}
 }
 function restoreDateFilter(){
- try{const saved=JSON.parse(localStorage.getItem(dateStorageKey)||'null');if(!saved||typeof saved!=='object')return;
+ try{const saved=JSON.parse(localStorage.getItem(dateStorageKey)||(planProfile==='1'?localStorage.getItem('sap-plan-date-filter'):null)||'null');if(!saved||typeof saved!=='object')return;
   for(const key of ['from','to'])if(typeof saved[key]==='string'&&(!saved[key]||/^\d{4}-\d{2}-\d{2}$/.test(saved[key])))$(key).value=saved[key];
  }catch(error){/* Ignore invalid or unavailable local storage. */}
 }
@@ -91,7 +92,7 @@ $('filters').onsubmit=run(async()=>{saveDateFilter();await report();});$('search
 $('clear').onclick=run(async()=>{clearFiltersKeepingDates();filterAssets();await report();});
 $('group-form').onsubmit=run(async()=>{await api('groups',{name:$('group-name').value,assets:selected()});await loadMeta();await report();message('Agrupamento salvo. Selecione-o no filtro Grupo de ativos.');});
 $('rules').onsubmit=run(async()=>{const codes=id=>$(id).value.trim().toUpperCase().split(/\s+/).filter(Boolean);await api('config',{done_user:codes('done-user'),not_done_user:codes('not-done-user'),plan_manter:meta.config.plan_manter,no_plan_extra:meta.config.no_plan_extra});await loadMeta();await report();message('Regras salvas. Indicadores recalculados.');});
-$('import').onclick=()=>{location.assign('/configuracoes#preventivo');};
+$('import').onclick=()=>{location.assign('/configuracoes?profile='+encodeURIComponent(planProfile)+'#preventivo');};
 $('source-cancel').onclick=()=>{$('source-picker').hidden=true;};
 $('source-form').onsubmit=run(async()=>{
  const choices=Object.fromEntries(['IP18','IW39','IP24','IH06'].map(kind=>[kind,$('source-'+kind).value]));
@@ -101,7 +102,8 @@ $('source-form').onsubmit=run(async()=>{
 });
 restoreDateFilter();
 $('from').onchange=saveDateFilter;$('to').onchange=saveDateFilter;
-run(async()=>{await loadMeta();await report();})();
+$('plan-profile').onchange=()=>{location.href='/plano-manutencao?profile='+encodeURIComponent($('plan-profile').value);};
+run(async()=>{const d=await api('profiles');$('plan-profile').innerHTML=d.profiles.map(p=>`<option value="${p.id}">${esc(p.name)}</option>`).join('');$('plan-profile').value=planProfile;await loadMeta();await report();})();
 
 $('group-cards').onclick=run(async e=>{const button=e.target.closest('[data-group],[data-all-assets]');if(!button)return;if(button.hasAttribute('data-all-assets')){$('group').value='';$('search').value='';for(const option of $('assets').options)option.selected=false;filterAssets();}else{$('group').value=button.dataset.group;}await report();});
 $('group').onchange=run(async()=>{await report();});
@@ -195,7 +197,7 @@ $('export-plans').onclick=run(async()=>{
  const exportFilters={...appliedPlanFilters,...(selectedSummaryAsset===null?{}:{summary_asset:selectedSummaryAsset})};
  const planOrder=[...document.querySelectorAll('#plan-summary tr[data-plan]')].map(row=>row.dataset.plan);
  try{
-  const response=await fetch('/api/sap/export-plans',{method:'POST',headers:{'Content-Type':'application/json','X-CSRF-Token':document.querySelector('meta[name=csrf-token]').content},body:JSON.stringify({filters:exportFilters,plan_order:planOrder})});
+  const response=await fetch('/api/sap/export-plans?profile='+encodeURIComponent(planProfile),{method:'POST',headers:{'Content-Type':'application/json','X-CSRF-Token':document.querySelector('meta[name=csrf-token]').content},body:JSON.stringify({filters:exportFilters,plan_order:planOrder})});
   if(!response.ok){const error=await response.json();throw Error(error.error||'Não foi possível exportar.');}
   const blob=await response.blob(),url=URL.createObjectURL(blob),link=document.createElement('a');
   link.href=url;link.download='realizacao_por_plano.xlsx';document.body.append(link);link.click();link.remove();setTimeout(()=>URL.revokeObjectURL(url),60000);

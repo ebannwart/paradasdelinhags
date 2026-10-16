@@ -34,7 +34,7 @@ class SAPPlanTests(unittest.TestCase):
                     'type':'ZPRV','activity_type':'C6','work_center':'MM','abc':'A' if i=='I' else 'B',
                     'condition':'OPE - Em operação','source':'IP18'}))
             for kind,key,row in fixtures:
-                db.execute('INSERT INTO sap_rows VALUES(?,?,?)',(kind,key,json.dumps(row)))
+                db.execute('INSERT INTO sap_rows(kind,id,payload) VALUES(?,?,?)',(kind,key,json.dumps(row)))
 
     def tearDown(self): self.temp.cleanup()
 
@@ -71,7 +71,7 @@ class SAPPlanTests(unittest.TestCase):
             for i, location in enumerate(['G-CSN-79-001-010', 'G-CSN-79-001']):
                 for kind, row in [('IP18', {'item': 'TOP'+str(i), 'plan': 'TOP', 'asset': location}),
                                   ('IW39', {'order': 'TOP'+str(i), 'item': 'TOP'+str(i), 'plan': 'TOP', 'basic_start': '2026-09-01'})]:
-                    db.execute('INSERT INTO sap_rows VALUES(?,?,?)', (kind, 'TOP'+str(i), json.dumps(row)))
+                    db.execute('INSERT INTO sap_rows(kind,id,payload) VALUES(?,?,?)', (kind, 'TOP'+str(i), json.dumps(row)))
             data = report(db, {'plan': 'TOP'})
         self.assertEqual({r['asset'] for r in data['by_asset']}, {'G-CSN-79-001-010', 'G-CSN-79-001'})
         self.assertTrue(all(r['direct_location'] for r in data['by_asset']))
@@ -82,7 +82,7 @@ class SAPPlanTests(unittest.TestCase):
         with connect(self.path) as db:
             for kind, row in [('IP18', {'item':'TOP', 'plan':'TOP', 'asset':parent}),
                               ('IW39', {'order':'TOP', 'item':'TOP', 'plan':'TOP', 'basic_start':'2026-09-01'})]:
-                db.execute('INSERT INTO sap_rows VALUES(?,?,?)', (kind, 'TOP', json.dumps(row)))
+                db.execute('INSERT INTO sap_rows(kind,id,payload) VALUES(?,?,?)', (kind, 'TOP', json.dumps(row)))
         self.assertIn(parent, [r['asset'] for r in self.client.get('/api/sap/meta').json['assets']])
         filters = {'assets': [parent], 'date_from':'2026-09-01', 'date_to':'2026-09-30'}
         data = self.post('report', filters).json
@@ -326,7 +326,7 @@ class SAPPlanTests(unittest.TestCase):
     def test_plan_only_join_is_not_ambiguous(self):
         with connect(self.path) as db:
             row={'order':'99','plan':'P','basic_start':'2026-09-01','system_status':'CONF'}
-            db.execute('INSERT INTO sap_rows VALUES(?,?,?)',('IW39','99',json.dumps(row)))
+            db.execute('INSERT INTO sap_rows(kind,id,payload) VALUES(?,?,?)',('IW39','99',json.dumps(row)))
         data=self.post('report',{}).json
         self.assertEqual(data['totals']['planned'],4)
         self.assertEqual(data['outside_master_orders'],2)
@@ -339,7 +339,7 @@ class SAPPlanTests(unittest.TestCase):
                'asset':parent+'-055','basic_start':'2026-09-15','system_status':'CNPA','source':'IW39'}
         with connect(self.path) as db:
             for kind,key,row in [('IP18',master['item'],master),('IW39',order['order'],order)]:
-                db.execute('INSERT INTO sap_rows VALUES(?,?,?)',(kind,key,json.dumps(row)))
+                db.execute('INSERT INTO sap_rows(kind,id,payload) VALUES(?,?,?)',(kind,key,json.dumps(row)))
         for selection in [{'assets':[parent]},{'search':parent}]:
             result=self.post('report',selection|{'date_from':'2026-09-01','date_to':'2026-09-30'}).json
             self.assertEqual(result['totals']['planned'],1)

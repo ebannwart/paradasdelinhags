@@ -20,6 +20,7 @@ import sap_plan
 import failure_analysis
 import configuration
 import offender_actions
+import local_settings
 from modalities import MODALITIES, LABELS, MODALITY_SQL
 from database import ACTIVE, TYPE, connect, initialize, normalize
 from importer import TYPES, import_file, rebuild_events
@@ -27,20 +28,26 @@ from importer import TYPES, import_file, rebuild_events
 ROOT = Path(__file__).resolve().parent
 
 
-def create_app(db_path=None, source_dir=None):
+def create_app(db_path=None, source_dir=None, local_dir=None):
     app = Flask(__name__)
     data_dir = ROOT / 'data'
     data_dir.mkdir(exist_ok=True)
-    secret_file = data_dir / '.secret'
+    profile=Path(local_dir) if local_dir else (Path(db_path).parent / '.local' if db_path else Path(os.environ.get('LOCALAPPDATA',Path.home()/'.local/share')) / 'GovernancaGDM')
+    preferences,pointer,selected=local_settings.prepare(profile)
+    if db_path is None and selected:
+        local_settings.validate_existing(Path(selected))
+    secret_file = profile / '.secret'
     if not secret_file.exists(): secret_file.write_text(secrets.token_hex(32))
     app.config.update(SECRET_KEY=secret_file.read_text().strip(), MAX_CONTENT_LENGTH=100 * 1024 * 1024,
                       SESSION_COOKIE_SAMESITE='Strict', SESSION_COOKIE_HTTPONLY=True,
-                      DB_PATH=str(db_path or data_dir / 'paradas.sqlite3'), SOURCE_DIR=Path(source_dir or ROOT))
+                      DB_PATH=str(Path(db_path or selected or data_dir / 'paradas.sqlite3').resolve()),
+                      LOCAL_DB_PATH=str(preferences), DATABASE_POINTER=str(pointer), MIGRATE_LOCAL_SOURCES=db_path is None and not bool(selected), SOURCE_DIR=Path(source_dir or ROOT))
     initialize(app.config['DB_PATH'])
     sap_plan.register(app, data_dir)
     failure_analysis.register(app)
     configuration.register(app)
     offender_actions.register(app)
+    local_settings.register(app)
     job_lock = threading.Lock()
     job = {'running': False, 'completed': 0, 'total': 0, 'current': '', 'results': []}
     job_state_lock = threading.Lock()

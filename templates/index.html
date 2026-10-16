@@ -69,7 +69,7 @@
         <label>Status da ação<select id="oa-status"><option value="">Todos</option><option>Abertas</option><option>Vencidas</option><option>Concluídas</option><option>Não identificado</option></select></label>
         <label>Buscar nota, análise, ação ou responsável<input id="oa-search" type="search" placeholder="Número da nota ou texto"></label>
       </div>
-      <p class="field-help">As ações são vinculadas automaticamente pela linha e pela data e hora de início da falha SAP, quando esse instante coincide com o início ou está dentro do intervalo de um lançamento classificado no ofensor. Não é necessário confirmar vínculos. Análises sem horário ou sem lançamento correspondente ficam sem vínculo automático.</p>
+      <p class="field-help">As ações são vinculadas automaticamente pela linha e pela sobreposição dos intervalos das paradas SAP e dos lançamentos classificados no ofensor, incluindo coincidência entre início e fim. O fim SAP é calculado pelo início e pela duração da parada de processo. Sem duração, considera-se apenas o instante de início. Não é necessário confirmar vínculos. Análises sem horário ou sem lançamento correspondente ficam sem vínculo automático.</p>
       <button id="oa-edit-mappings" class="button secondary" type="button">Editar locais e linhas</button>
       <button id="oa-refresh" class="button secondary" type="button">Atualizar ações</button>
       <p id="oa-source" class="field-help"></p><p id="oa-message" role="status" aria-live="polite"></p>

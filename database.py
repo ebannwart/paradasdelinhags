@@ -32,7 +32,7 @@ def connect(path):
 def initialize(path):
     Path(path).parent.mkdir(parents=True, exist_ok=True)
     with connect(path) as db:
-        db.execute('PRAGMA journal_mode = WAL')
+        db.execute('PRAGMA journal_mode = DELETE')
         db.executescript('''
         CREATE TABLE IF NOT EXISTS files (
           id INTEGER PRIMARY KEY, name TEXT NOT NULL UNIQUE, sha256 TEXT NOT NULL,

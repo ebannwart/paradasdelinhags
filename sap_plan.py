@@ -42,6 +42,25 @@ def initialize(db):
     if 'visible' not in {r[1] for r in db.execute('PRAGMA table_info(sap_groups)')}:
         db.execute('ALTER TABLE sap_groups ADD COLUMN visible INTEGER NOT NULL DEFAULT 1')
 
+    db.execute('BEGIN IMMEDIATE')
+    db.execute('CREATE TABLE IF NOT EXISTS sap_profiles(id INTEGER PRIMARY KEY AUTOINCREMENT,name TEXT NOT NULL UNIQUE)')
+    db.execute("INSERT OR IGNORE INTO sap_profiles(id,name) VALUES(1,'Plano atual')")
+    if 'profile_id' not in {r[1] for r in db.execute('PRAGMA table_info(sap_rows)')}:
+        for table,columns,schema in [
+            ('sap_rows','kind,id,payload','kind TEXT,id TEXT,payload TEXT,profile_id INTEGER NOT NULL DEFAULT 1 REFERENCES sap_profiles(id),PRIMARY KEY(profile_id,kind,id)'),
+            ('sap_files','name,kind,rows,imported_at','name TEXT,kind TEXT,rows INTEGER,imported_at TEXT,profile_id INTEGER NOT NULL DEFAULT 1 REFERENCES sap_profiles(id),PRIMARY KEY(profile_id,name)'),
+            ('sap_groups','id,name,assets,position,visible','id INTEGER PRIMARY KEY,name TEXT,assets TEXT,position INTEGER NOT NULL DEFAULT 0,visible INTEGER NOT NULL DEFAULT 1,profile_id INTEGER NOT NULL DEFAULT 1 REFERENCES sap_profiles(id),UNIQUE(profile_id,name)'),
+            ('sap_config','id,payload','id INTEGER CHECK(id=1),payload TEXT,profile_id INTEGER NOT NULL DEFAULT 1 REFERENCES sap_profiles(id),PRIMARY KEY(profile_id,id)')]:
+            db.execute(f'ALTER TABLE {table} RENAME TO {table}_legacy')
+            db.execute(f'CREATE TABLE {table}({schema})')
+            db.execute(f'INSERT INTO {table}({columns}) SELECT {columns} FROM {table}_legacy')
+            db.execute(f'DROP TABLE {table}_legacy')
+
+
+def profile(db):
+    return getattr(db,'sap_profile',1)
+
+
 
 FIELDS = {
     'asset': 'Loc.instalação', 'name': 'Denominação', 'order': 'Ordem',
@@ -88,7 +107,7 @@ def read_export(path, kind):
         wb.close()
 
 
-def import_exports(db_path, directory, selected_files=None):
+def import_exports(db_path, directory, selected_files=None, profile_id=1):
     files = [(p, p.name.split(' ')[0].upper()) for p in sorted(directory.glob('*.xlsx'))
              if p.name.split(' ')[0].upper() in ('IH06', 'IP18', 'IP24', 'IW39', 'IW49N')] if selected_files is None else selected_files
     if not files:
@@ -113,10 +132,10 @@ def import_exports(db_path, directory, selected_files=None):
     with connect(db_path) as db:
         db.execute('BEGIN IMMEDIATE')
         for kind, batch in batches.items():
-            db.execute('DELETE FROM sap_rows WHERE kind=?', (kind,))
-            db.execute('DELETE FROM sap_files WHERE kind=?', (kind,))
-            db.executemany('INSERT INTO sap_rows VALUES(?,?,?)', [(kind,k,json.dumps(v,ensure_ascii=False)) for k,v in batch.items()])
-        db.executemany('INSERT INTO sap_files VALUES(?,?,?,?)', counts)
+            db.execute('DELETE FROM sap_rows WHERE kind=? AND profile_id=?', (kind,profile_id))
+            db.execute('DELETE FROM sap_files WHERE kind=? AND profile_id=?', (kind,profile_id))
+            db.executemany('INSERT INTO sap_rows(kind,id,payload,profile_id) VALUES(?,?,?,?)', [(kind,k,json.dumps(v,ensure_ascii=False),profile_id) for k,v in batch.items()])
+        db.executemany('INSERT INTO sap_files(name,kind,rows,imported_at,profile_id) VALUES(?,?,?,?,?)', [(*r,profile_id) for r in counts])
     return {'files': len(files), 'rows': {k:len(v) for k,v in batches.items()}, 'duplicates': duplicates}
 
 
@@ -124,7 +143,7 @@ DEFAULT_CONFIG = {'done_user': [], 'not_done_user': [], 'plan_manter': False, 'n
 
 
 def config(db):
-    row = db.execute('SELECT payload FROM sap_config WHERE id=1').fetchone()
+    row = db.execute('SELECT payload FROM sap_config WHERE id=1 AND profile_id=?',(profile(db),)).fetchone()
     return DEFAULT_CONFIG | (json.loads(row[0]) if row else {})
 
 
@@ -144,7 +163,7 @@ def level_asset(asset):
 
 
 def load_rows(db, kind):
-    return [json.loads(r[0]) for r in db.execute('SELECT payload FROM sap_rows WHERE kind=?', (kind,))]
+    return [json.loads(r[0]) for r in db.execute('SELECT payload FROM sap_rows WHERE kind=? AND profile_id=?', (kind,profile(db)))]
 
 
 def master_assets(db):
@@ -256,7 +275,7 @@ def report(db, filters, *, all_rows=False):
     if filters.get('date_from') and filters.get('date_to') and filters['date_from'] > filters['date_to']:
         raise ValueError('O início do período deve ser anterior ao fim.')
     groups = [dict(r)|{'assets':sorted({level_asset(a) or a for a in json.loads(r['assets']) if a})}
-              for r in db.execute('SELECT * FROM sap_groups ORDER BY position, name')]
+              for r in db.execute('SELECT * FROM sap_groups WHERE profile_id=? ORDER BY position, name',(profile(db),))]
     chosen = None
     if filters.get('group'):
         chosen = next((g for g in groups if str(g['id'])==str(filters['group'])),None)
@@ -311,6 +330,36 @@ def register(app, data_dir):
     lock = threading.Lock()
     job = {'running':False, 'error':'', 'result':None}
 
+    def scoped_db():
+        ident=request.args.get('profile','1')
+        if not ident.isdigit(): raise ValueError('Configuração de plano inválida.')
+        db=connect(app.config['DB_PATH'])
+        if not db.execute('SELECT 1 FROM sap_profiles WHERE id=?',(int(ident),)).fetchone():
+            db.close();raise ValueError('Configuração de plano não encontrada.')
+        db.sap_profile=int(ident)
+        return db
+
+    @app.get('/api/sap/profiles')
+    def profiles_read():
+        with connect(app.config['DB_PATH']) as db:
+            return jsonify(profiles=[dict(r) for r in db.execute('SELECT id,name FROM sap_profiles ORDER BY id')])
+
+    @app.post('/api/sap/profiles')
+    def profiles_save():
+        body=request.get_json() or {}
+        name=text(body.get('name'))
+        if not name or len(name)>120: raise ValueError('Informe um nome de até 120 caracteres.')
+        with connect(app.config['DB_PATH']) as db:
+            db.execute('BEGIN IMMEDIATE')
+            ident=body.get('id')
+            if db.execute('SELECT 1 FROM sap_profiles WHERE lower(name)=lower(?) AND id<>?',(name,ident or 0)).fetchone():
+                raise ValueError('Já existe uma configuração com esse nome.')
+            if ident is None:
+                ident=db.execute('INSERT INTO sap_profiles(name) VALUES(?)',(name,)).lastrowid
+            elif not db.execute('UPDATE sap_profiles SET name=? WHERE id=?',(name,ident)).rowcount:
+                raise ValueError('Configuração não encontrada.')
+        return jsonify(id=ident,name=name)
+
     @app.get('/plano-manutencao')
     def sap_page():
         session.setdefault('csrf', secrets.token_hex(32))
@@ -318,31 +367,33 @@ def register(app, data_dir):
 
     @app.get('/api/sap/meta')
     def sap_meta():
-        with connect(app.config['DB_PATH']) as db:
+        with scoped_db() as db:
             assets = master_assets(db)
             masters = load_rows(db,'IP18')
             dimensions = {k:sorted({r.get(k,'') for r in masters if r.get(k)}) for k in ('type','activity_type','work_center','abc','condition')}
-            files = [dict(r) for r in db.execute('SELECT * FROM sap_files ORDER BY kind')]
-            groups = [dict(r) | {'assets':json.loads(r['assets'])} for r in db.execute('SELECT * FROM sap_groups ORDER BY position, name')]
+            files = [dict(r) for r in db.execute('SELECT * FROM sap_files WHERE profile_id=? ORDER BY kind',(profile(db),))]
+            groups = [dict(r) | {'assets':json.loads(r['assets'])} for r in db.execute('SELECT * FROM sap_groups WHERE profile_id=? ORDER BY position, name',(profile(db),))]
             cfg = config(db)
-        return jsonify(assets=assets,files=files,groups=groups,config=cfg,dimensions=dimensions,job=dict(job))
+        return jsonify(profile_id=int(request.args.get('profile',1)),assets=assets,files=files,groups=groups,config=cfg,dimensions=dimensions,job=dict(job))
 
     @app.get('/api/sap/source-choices')
     def sap_source_choices():
+        with scoped_db() as db: pass
         source_directory = app.config['SOURCE_DIR'] / 'Importacao'
         available = sorted(p.resolve() for folder in (data_dir, source_directory) for p in folder.glob('*.xlsx') if not p.name.startswith('~$'))
-        with connect(app.config['DB_PATH']) as db:
-            saved = dict(db.execute('SELECT kind,path FROM sap_source_choices').fetchall())
+        with connect(app.config['LOCAL_DB_PATH']) as db:
+            saved = dict(db.execute('SELECT kind,path FROM sap_profile_sources WHERE profile_id=?',(int(request.args.get('profile',1)),)).fetchall())
         available = sorted(set(available) | {Path(p) for p in saved.values() if p and Path(p).is_file()})
         choices = {}
         for kind in ('IP18', 'IW39', 'IP24', 'IH06', 'IW49N'):
             if kind == 'IW49N' and kind not in saved and not any(p.name.startswith(kind) for p in available): continue
             candidates = [p for p in available if p.name.split(' ')[0].upper() == kind]
-            choices[kind] = saved.get(kind, str(candidates[0]) if len(candidates) == 1 else '')
+            choices[kind] = saved.get(kind, str(candidates[0]) if request.args.get('profile','1')=='1' and len(candidates) == 1 else '')
         return jsonify(choices=choices, available=[str(p) for p in available], directory=str(data_dir.resolve()))
 
     @app.post('/api/sap/import')
     def sap_import():
+        with scoped_db() as db: selected_profile=profile(db)
         choices = (request.get_json() or {}).get('choices')
         if choices is None:
             from configuration import read_sources
@@ -367,14 +418,14 @@ def register(app, data_dir):
         if not selected_files: raise ValueError('Selecione pelo menos um arquivo para atualizar.')
         if not lock.acquire(False): return jsonify(error='Importação em andamento.'),409
         try:
-            with connect(app.config['DB_PATH']) as db:
-                db.executemany('INSERT OR REPLACE INTO sap_source_choices VALUES(?,?)', paths.items())
+            with connect(app.config['LOCAL_DB_PATH']) as db:
+                db.executemany('INSERT OR REPLACE INTO sap_profile_sources VALUES(?,?,?)', [(selected_profile,k,v) for k,v in paths.items()])
         except Exception:
             lock.release()
             raise
-        job.update(running=True,error='',result=None)
+        job.update(running=True,error='',result=None,profile_id=selected_profile)
         def worker():
-            try: job['result'] = import_exports(app.config['DB_PATH'], data_dir, selected_files)
+            try: job['result'] = import_exports(app.config['DB_PATH'], data_dir, selected_files, **({'profile_id':selected_profile} if selected_profile!=1 else {}))
             except Exception as exc:
                 app.logger.exception('Importação SAP')
                 job['error'] = str(exc)
@@ -386,7 +437,7 @@ def register(app, data_dir):
 
     @app.post('/api/sap/report')
     def sap_report():
-        with connect(app.config['DB_PATH']) as db:
+        with scoped_db() as db:
             db.execute('BEGIN')
             return jsonify(report(db, request.get_json() or {}))
 
@@ -396,7 +447,7 @@ def register(app, data_dir):
         body = request.get_json() or {}
         filters = dict(body.get('filters') or {})
         for key in ('execution', 'day', 'month', 'page'): filters.pop(key, None)
-        with connect(app.config['DB_PATH']) as db:
+        with scoped_db() as db:
             db.execute('BEGIN')
             data = report(db, filters, all_rows=True)
         return send_file(export_plans(data, filters, body.get('plan_order')),
@@ -408,7 +459,7 @@ def register(app, data_dir):
         body = (request.get_json() or {}) if request.method == 'POST' else request.args.to_dict()
         code = text(body.get('plan')).upper()
         if not code: return jsonify(error='Informe o código do plano.'), 400
-        with connect(app.config['DB_PATH']) as db:
+        with scoped_db() as db:
             db.execute('BEGIN')
             items = [r for r in load_rows(db, 'IP18') if r.get('plan', '').upper() == code]
             if not items: return jsonify(error='Plano não encontrado na IP18 importada.'), 404
@@ -429,8 +480,8 @@ def register(app, data_dir):
                 raise ValueError('Informe códigos de status separados por espaços.')
             cfg[key] = value
         if set(cfg['done_user']) & set(cfg['not_done_user']): raise ValueError('Um status não pode significar realizada e não realizada ao mesmo tempo.')
-        with connect(app.config['DB_PATH']) as db:
-            db.execute('INSERT OR REPLACE INTO sap_config VALUES(1,?)', (json.dumps(cfg),))
+        with scoped_db() as db:
+            db.execute('INSERT OR REPLACE INTO sap_config(id,payload,profile_id) VALUES(1,?,?)', (json.dumps(cfg),profile(db)))
         return jsonify(ok=True)
 
     @app.post('/api/sap/groups')
@@ -439,45 +490,45 @@ def register(app, data_dir):
         name, assets = text(body.get('name')), body.get('assets',[])
         if not name or len(name)>120 or not isinstance(assets,list) or not assets or not all(isinstance(a,str) for a in assets):
             raise ValueError('Informe o nome do grupo e selecione seus ativos.')
-        with connect(app.config['DB_PATH']) as db:
+        with scoped_db() as db:
             known = {r['asset'] for r in master_assets(db)}
             if not set(assets) <= known: raise ValueError('Selecione locais disponíveis no cadastro IP18.')
             group_id = body.get('id')
             if group_id is not None:
-                if not db.execute('SELECT id FROM sap_groups WHERE id=?', (group_id,)).fetchone():
+                if not db.execute('SELECT id FROM sap_groups WHERE id=? AND profile_id=?', (group_id,profile(db))).fetchone():
                     raise ValueError('Agrupamento não encontrado.')
-                duplicate = db.execute('SELECT id FROM sap_groups WHERE name=? AND id<>?', (name, group_id)).fetchone()
+                duplicate = db.execute('SELECT id FROM sap_groups WHERE name=? AND id<>? AND profile_id=?', (name, group_id,profile(db))).fetchone()
                 if duplicate: raise ValueError('Já existe um agrupamento com esse nome.')
-                db.execute('UPDATE sap_groups SET name=?,assets=? WHERE id=?', (name,json.dumps(sorted(set(assets))),group_id))
+                db.execute('UPDATE sap_groups SET name=?,assets=? WHERE id=? AND profile_id=?', (name,json.dumps(sorted(set(assets))),group_id,profile(db)))
             else:
-                db.execute('INSERT INTO sap_groups(name,assets,position) VALUES(?,?,(SELECT COALESCE(MAX(position),0)+1 FROM sap_groups)) ON CONFLICT(name) DO UPDATE SET assets=excluded.assets', (name,json.dumps(sorted(set(assets)))))
+                db.execute('INSERT INTO sap_groups(name,assets,position,profile_id) VALUES(?,?,(SELECT COALESCE(MAX(position),0)+1 FROM sap_groups WHERE profile_id=?),?) ON CONFLICT(profile_id,name) DO UPDATE SET assets=excluded.assets', (name,json.dumps(sorted(set(assets))),profile(db),profile(db)))
         return jsonify(ok=True)
 
     @app.post('/api/sap/groups/reorder')
     def sap_groups_reorder():
         ids = (request.get_json() or {}).get('ids')
-        with connect(app.config['DB_PATH']) as db:
+        with scoped_db() as db:
             db.execute('BEGIN IMMEDIATE')
-            known = {r[0] for r in db.execute('SELECT id FROM sap_groups')}
+            known = {r[0] for r in db.execute('SELECT id FROM sap_groups WHERE profile_id=?',(profile(db),))}
             if not isinstance(ids, list) or any(type(i) is not int for i in ids) or len(ids) != len(known) or set(ids) != known:
                 raise ValueError('A lista de agrupamentos mudou. Atualize a página.')
-            db.executemany('UPDATE sap_groups SET position=? WHERE id=?', enumerate(ids))
+            db.executemany('UPDATE sap_groups SET position=? WHERE id=? AND profile_id=?', [(i,ident,profile(db)) for i,ident in enumerate(ids)])
         return jsonify(ok=True)
 
     @app.post('/api/sap/groups/delete')
     def sap_groups_delete():
         group_id = (request.get_json() or {}).get('id')
-        with connect(app.config['DB_PATH']) as db:
-            if not db.execute('SELECT id FROM sap_groups WHERE id=?', (group_id,)).fetchone():
+        with scoped_db() as db:
+            if not db.execute('SELECT id FROM sap_groups WHERE id=? AND profile_id=?', (group_id,profile(db))).fetchone():
                 raise ValueError('Agrupamento não encontrado.')
-            db.execute('DELETE FROM sap_groups WHERE id=?', (group_id,))
+            db.execute('DELETE FROM sap_groups WHERE id=? AND profile_id=?', (group_id,profile(db)))
         return jsonify(ok=True)
 
     @app.post('/api/sap/groups/visibility')
     def sap_group_visibility():
         body = request.get_json() or {}
         if type(body.get('visible')) is not bool: raise ValueError('Informe se o agrupamento deve ser exibido.')
-        with connect(app.config['DB_PATH']) as db:
-            result = db.execute('UPDATE sap_groups SET visible=? WHERE id=?', (int(body['visible']),body.get('id')))
+        with scoped_db() as db:
+            result = db.execute('UPDATE sap_groups SET visible=? WHERE id=? AND profile_id=?', (int(body['visible']),body.get('id'),profile(db)))
             if not result.rowcount: raise ValueError('Agrupamento não encontrado.')
         return jsonify(ok=True)

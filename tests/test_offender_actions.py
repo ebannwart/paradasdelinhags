@@ -108,7 +108,7 @@ class OffenderActionsTests(unittest.TestCase):
         n={'equipment':'LSL1','date':'2026-09-30','time':'00:10:00'}
         r={'equipment':'LSL1','start':'2026-09-29T23:50:00','end':'2026-09-30T00:20:00'}
         self.assertEqual(matching_launches(n,[r]),[r])
-        self.assertEqual(matching_launches(n|{'time':'00:20:00'},[r]),[])
+        self.assertEqual(matching_launches(n|{'time':'00:20:00'},[r]),[r])
         self.assertEqual(matching_launches(n|{'time':''},[r]),[])
         self.assertEqual(matching_launches(n|{'equipment':'LZG1'},[r]),[])
         self.assertEqual(matching_launches(n|{'time':'13:00:00'},[r]),[])
@@ -122,3 +122,18 @@ class OffenderActionsTests(unittest.TestCase):
             self.assertEqual(db.execute('SELECT COUNT(*) FROM offender_failure_links').fetchone()[0],0)
             db.execute("UPDATE records SET start='2026-09-30T14:00:00',end='2026-09-30T15:00:00'")
         self.assertFalse(self.data()['notes'][0]['linked'])
+
+    def test_full_intervals_overlap_and_touching_endpoints(self):
+        from offender_actions import matching_launches
+        r={'equipment':'LSL1','start':'2026-09-30T12:59:00','end':'2026-09-30T13:14:00'}
+        n={'equipment':'LSL1','date':'2026-09-30','time':'12:58:00','process_duration':2/60}
+        self.assertEqual(matching_launches(n,[r]),[r])  # One minute of overlap.
+        self.assertEqual(matching_launches(n|{'process_duration':1/60},[r]),[r])
+        self.assertEqual(matching_launches(n|{'time':'13:14:00'},[r]),[r])
+        self.assertEqual(matching_launches(n|{'time':'12:00:00','process_duration':2},[r]),[r])
+        self.assertEqual(matching_launches(n|{'process_duration':0},[r]),[])
+        self.assertEqual(matching_launches(n|{'process_duration':None},[r]),[])
+        self.assertEqual(matching_launches(n|{'time':'13:14:01'},[r]),[])
+        self.assertEqual(matching_launches(n|{'equipment':'LZG1'},[r]),[])
+        overnight={'equipment':'LSL1','start':'2026-10-01T00:00:00','end':'2026-10-01T00:10:00'}
+        self.assertEqual(matching_launches(n|{'time':'23:59:00'},[overnight]),[overnight])

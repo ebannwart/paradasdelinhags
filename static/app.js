@@ -255,6 +255,7 @@ async function loadMaintenance() {
   if(!equipment){$('maintenance-context').textContent='Importe as planilhas em Configurações para calcular os indicadores.';return;}
   const data=await api('/api/maintenance',{equipment,files:[...$('maintenance-files').selectedOptions].map(o=>o.value)});
   if(version!==maintenanceVersion)return;
+  data.selected_year=data.latest_year;
   maintenanceData=data;
   $('target-equipment').textContent=equipment;
   Object.keys(maintenanceSpecs).forEach(key=>$('target-'+key).value=data.targets[key]??'');
@@ -278,11 +279,15 @@ function renderMaintenance() {
   const data=maintenanceData;
   $('maintenance-charts').innerHTML=Object.entries(maintenanceSpecs).map(([key,spec])=>{
     const target=data.targets[key],targetText=target===null?'Sem meta cadastrada':`Meta ${spec.direction==='min'?'≥':'≤'} ${maintenanceValue(target,spec.unit)}`;
-    return `<section class="maintenance-indicator"><div class="section-line"><div><h2>${spec.title}${key==='failure_events'?'':key==='imc'?' · Paradas corretivas':spec.unit==='%'?' · Disponibilidade':spec.unit==='min'?' · Minutos por falha':' · Horas por falha'}</h2><p class="formula">${esc(spec.formula)}</p></div></div><div class="maintenance-pair"><article class="panel chart-card"><div class="section-line"><div><h2>Histórico anual</h2><p>${key==='failure_events'?'Média mensal · eventos do ano ÷ meses com dados':'Índice calculado pelos totais de cada ano'}</p></div><span class="badge chart-target">${esc(targetText)}${target===null?'':' · '+new Date().getFullYear()}</span></div><div class="chart" id="maintenance-${key}-annual"></div></article><article class="panel chart-card"><div class="section-line"><div><h2>Mensal · ${data.latest_year??'—'}</h2><p>${key==='failure_events'?'Quantidade de eventos em cada mês':'Ano mais recente das fontes selecionadas'}</p></div><span class="badge chart-target">${esc(targetText)}</span></div><div class="chart" id="maintenance-${key}-monthly"></div></article></div>${key==='imc'?'<section class="panel padded imc-top-panel"><h2>Top 10 maiores paradas de manutenção</h2><p class="field-help">Clique em uma barra de mês ou ano do IMC. ME + MM por evento consolidado, ordenados pelos minutos dentro do período e dos arquivos selecionados. Preventivas e outras modalidades não entram. Datas abaixo são dos lançamentos corretivos; paradas que atravessam períodos têm seus minutos rateados como no IMC.</p><div id="imc-top-results" aria-live="polite">Selecione um mês ou ano no gráfico acima.</div></section>':''}</section>`;
+    return `<section class="maintenance-indicator"><div class="section-line"><div><h2>${spec.title}${key==='failure_events'?'':key==='imc'?' · Paradas corretivas':spec.unit==='%'?' · Disponibilidade':spec.unit==='min'?' · Minutos por falha':' · Horas por falha'}</h2><p class="formula">${esc(spec.formula)}</p></div></div><div class="maintenance-pair"><article class="panel chart-card"><div class="section-line"><div><h2>Histórico anual</h2><p>${key==='failure_events'?'Média mensal · eventos do ano ÷ meses com dados':'Índice calculado pelos totais de cada ano'}</p></div><span class="badge chart-target">${esc(targetText)}${target===null?'':' · '+new Date().getFullYear()}</span></div><div class="chart" id="maintenance-${key}-annual"></div></article><article class="panel chart-card"><div class="section-line"><div><h2>Mensal · ${data.selected_year??'—'}</h2><p>${key==='failure_events'?'Quantidade de eventos em cada mês':'Clique em um ano no histórico para alterar os meses'}</p></div><span class="badge chart-target">${esc(targetText)}</span></div><div class="chart" id="maintenance-${key}-monthly"></div></article></div>${key==='imc'?'<section class="panel padded imc-top-panel"><h2>Top 10 maiores paradas de manutenção</h2><p class="field-help">Clique em uma barra de mês ou ano do IMC. ME + MM por evento consolidado, ordenados pelos minutos dentro do período e dos arquivos selecionados. Preventivas e outras modalidades não entram. Datas abaixo são dos lançamentos corretivos; paradas que atravessam períodos têm seus minutos rateados como no IMC.</p><div id="imc-top-results" aria-live="polite">Selecione um mês ou ano no gráfico acima.</div></section>':''}</section>`;
   }).join('');
   for(const [key,spec] of Object.entries(maintenanceSpecs)) {
     const sharedMax=Math.max(data.targets[key]??0,...[...data.annual,...data.monthly].map(r=>r[key]??0),1);
-    const sharedRange=[0,key==='dgfm'?Math.max(110,sharedMax*1.1):sharedMax*1.22];
+    const dgfmValues=[...data.annual,...data.monthly].map(r=>r.dgfm).filter(Number.isFinite);
+    if(Number.isFinite(data.targets.dgfm))dgfmValues.push(data.targets.dgfm);
+    const sharedRange=key==='dgfm'
+      ? (dgfmValues.length?[Math.floor(Math.min(...dgfmValues)-2),Math.ceil(Math.max(...dgfmValues)+2)]:[0,100])
+      : [0,sharedMax*1.22];
     for(const scope of ['annual','monthly']) {
       const rows=scope==='annual'?data.annual:data.monthly;
       const currentYear=String(new Date().getFullYear());
@@ -295,6 +300,7 @@ function renderMaintenance() {
         r.partial?'Período parcial':'',r.errors.join(' '),r.months_with_data??1
       ]);
       const yaxis={title:{text:key==='failure_events'?'Eventos/mês':key==='imc'?'Paradas corretivas (%)':spec.unit==='%'?'Disponibilidade (%)':spec.unit==='min'?'Minutos':'Horas'},gridcolor:'#eaf0f3',rangemode:'tozero',automargin:true};
+      if(key==='dgfm'){yaxis.rangemode='normal';yaxis.tickformat='.0f';yaxis.ticksuffix='%';}
       yaxis.range=sharedRange;
       yaxis.autorange=false;
       const layout={margin:{l:52,r:18,t:35,b:45},yaxis,xaxis:{type:'category',tickfont:{size:10},automargin:true},showlegend:false};
@@ -302,7 +308,7 @@ function renderMaintenance() {
       layout.shapes=target===null?[]:[{type:'line',xref:scope==='annual'?'x':'paper',
         x0:scope==='annual'?targetIndex-.36:0,x1:scope==='annual'?targetIndex+.36:1,
         yref:'y',y0:target,y1:target,line:{color:'#ad632e',dash:'dot',width:2}}];
-      plot(`maintenance-${key}-${scope}`,[{type:'bar',x:labels,y:rows.map(r=>r[key]),name:spec.title,marker:{color:colors},customdata:details,text:rows.map(r=>r[key]===null?'':fmt(r[key],key==='failure_events'&&scope==='monthly'?0:2)),textposition:'outside',cliponaxis:false,textfont:{size:10},hovertemplate:key==='failure_events'?'%{customdata[0]}<br>'+ (scope==='annual'?'Eventos no ano: %{customdata[4]}<br>Meses com dados: %{customdata[7]}<br>Média: %{y:.2f} eventos/mês':'Eventos no mês: %{y:.0f}')+'<br>%{customdata[5]}<extra></extra>':'%{customdata[0]}<br>'+spec.title+': %{y:.2f} '+spec.unit+'<br>Calendário: %{customdata[1]} h<br>ME + MM: %{customdata[2]} min<br>Preventiva: %{customdata[3]} min<br>Falhas: %{customdata[4]}<br>%{customdata[5]}<extra></extra>'}],layout,key==='imc'?p=>renderImcTop(scope,p.customdata[0]):null);
+      plot(`maintenance-${key}-${scope}`,[{type:'bar',x:labels,y:rows.map(r=>r[key]),name:spec.title,marker:{color:colors},customdata:details,text:rows.map(r=>r[key]===null?'':fmt(r[key],key==='failure_events'&&scope==='monthly'?0:2)),textposition:'outside',cliponaxis:false,textfont:{size:10},hovertemplate:key==='failure_events'?'%{customdata[0]}<br>'+ (scope==='annual'?'Eventos no ano: %{customdata[4]}<br>Meses com dados: %{customdata[7]}<br>Média: %{y:.2f} eventos/mês':'Eventos no mês: %{y:.0f}')+'<br>%{customdata[5]}<extra></extra>':'%{customdata[0]}<br>'+spec.title+': %{y:.2f} '+spec.unit+'<br>Calendário: %{customdata[1]} h<br>ME + MM: %{customdata[2]} min<br>Preventiva: %{customdata[3]} min<br>Falhas: %{customdata[4]}<br>%{customdata[5]}<extra></extra>'}],layout,scope==='annual'?p=>selectMaintenanceYear(p.customdata[0],key):key==='imc'?p=>renderImcTop(scope,p.customdata[0]):null);
     }
   }
   const audit=[...data.annual,...data.monthly];
@@ -316,6 +322,16 @@ function renderMaintenance() {
     const coverage=r.coverage.map(c=>`${dateText(c.from+'T00:00:00')}–${dateText(c.to+'T00:00:00')}`).join('; ');
     return `<tr><td><strong>${esc(r.period)}</strong><small>${esc(coverage||'Sem cobertura')}</small></td><td>${fmt(r.calendar_hours,2)}</td>${meta.modalities.map(m=>`<td>${fmt(r.modalities[m],2)}</td>`).join('')}<td>${fmt(r.failures)}</td><td>${r.failure_events===null?'—':fmt(r.failure_events,r.months_with_data===undefined?0:2)}</td><td class="audit-notes">${esc(notes.join(' · ')||'—')}</td></tr>`;
   }).join('');
+}
+function selectMaintenanceYear(year,indicator) {
+  const data=maintenanceData;
+  if(!data?.monthly_by_year?.[year])return;
+  data.selected_year=Number(year);
+  data.monthly=data.monthly_by_year[year];
+  renderMaintenance();
+  const row=data.annual.find(r=>r.period===String(year));
+  $('maintenance-context').textContent=`Linha ${data.equipment} · Mensal selecionado: ${year} · ${row?.months_with_data??0} mês(es) com dados · ${fmt(row?.calendar_hours??0,1)} horas calendário. `+`Base calendário: ${data.line_count||1} linha(s) × 24h/dia · ${data.files.map(f=>f.name).join(', ')}. Meses sem dados permanecem sem indicador. Consulte a memória de cálculo para alertas de cobertura e sobreposição.`;
+  if(indicator==='imc')renderImcTop('annual',String(year));
 }
 function renderImcTop(scope,period) {
   const row=maintenanceData?.[scope]?.find(r=>r.period===period);

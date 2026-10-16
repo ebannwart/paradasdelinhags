@@ -2,10 +2,46 @@
 (() => {
 const $=id=>document.getElementById(id), kinds=['IH06','IP18','IP24','IW39','IW49N'], indicators=['imc','dgfm','mtbf','mttr','failure_events'];
 const esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const planProfile=new URLSearchParams(location.search).get('profile')||'1';
 let config, sap, stopTimer, planTimer, sourceDirty=new Set();
 const message=(text,error=false)=>{$('config-message').textContent=text;$('config-message').classList.toggle('error',error);};
-async function api(url,body){const r=await fetch(url,body===undefined?{}:{method:'POST',headers:{'Content-Type':'application/json','X-CSRF-Token':document.querySelector('meta[name="csrf-token"]').content},body:JSON.stringify(body)});const d=await r.json();if(!r.ok)throw Error(d.error||'Falha na operação.');return d;}
+async function api(url,body){if(url.startsWith('/api/sap/')||url==='/api/configuration'||url==='/api/configuration/sources')url+='?profile='+encodeURIComponent(planProfile);const r=await fetch(url,body===undefined?{}:{method:'POST',headers:{'Content-Type':'application/json','X-CSRF-Token':document.querySelector('meta[name="csrf-token"]').content},body:JSON.stringify(body)});const d=await r.json();if(!r.ok)throw Error(d.error||'Falha na operação.');return d;}
 const run=fn=>async e=>{e?.preventDefault();try{await fn(e);}catch(error){message(error.message,true);}};
+async function loadPlanProfiles(){
+ const d=await api('/api/sap/profiles');
+ $('plan-profile').innerHTML=d.profiles.map(p=>`<option value="${p.id}">${esc(p.name)}</option>`).join('');
+ $('plan-profile').value=planProfile;
+ $('open-plan-profile').href='/plano-manutencao?profile='+encodeURIComponent(planProfile);
+ $('plan-profile-name').value=d.profiles.find(p=>String(p.id)===planProfile)?.name||'';
+}
+$('plan-profile').onchange=()=>{location.href='/configuracoes?profile='+encodeURIComponent($('plan-profile').value)+'#preventivo';};
+$('plan-profile-create').onclick=run(async()=>{
+ const d=await api('/api/sap/profiles',{name:$('plan-profile-new-name').value});
+ location.href='/configuracoes?profile='+d.id+'#preventivo';
+});
+$('plan-profile-rename').onclick=run(async()=>{
+ await api('/api/sap/profiles',{id:Number(planProfile),name:$('plan-profile-name').value});
+ await loadPlanProfiles();message('Nome da configuração atualizado.');
+});
+async function loadDatabaseSettings(){
+ const d=await api('/api/configuration/database');
+ $('database-active').textContent='Banco em uso: '+d.active;
+ $('database-profile').textContent='Configuração local deste usuário: '+d.local_directory;
+ $('database-path').value=d.selected;
+ $('database-message').textContent=d.pending?'Alteração salva. Reinicie a aplicação para usar: '+d.selected:'';
+}
+$('database-form').onsubmit=run(async()=>{
+ const button=$('database-form').querySelector('button');button.disabled=true;
+ $('database-message').textContent='Validando o destino…';
+ try{
+  const result=await api('/api/configuration/database',{path:$('database-path').value,mode:$('database-mode').value});
+  sourceDirty.delete('database');$('database-mode').value='existing';
+  await loadDatabaseSettings();
+  $('database-message').textContent=result.pending?'Endereço salvo. Feche e inicie a aplicação novamente para usar o banco escolhido.':'O banco escolhido já está em uso.';
+ }catch(e){$('database-message').textContent=e.message;throw e;}
+ finally{button.disabled=false;}
+});
+$('database-form').addEventListener('input',()=>sourceDirty.add('database'));
 function status(path){return !path?'Não configurado':config.existence[path]?'Arquivo encontrado':'Arquivo ausente; confira o caminho ou coloque a exportação nesse endereço.';}
 function addStop(path=''){
  const row=document.createElement('div');row.className='source-row';row.innerHTML=`<label>Arquivo de paradas (.xlsx)<input class="stop-path" list="source-options" value="${esc(path)}"><small class="${config.existence[path]?'source-ok':'source-missing'}">${esc(status(path))}</small></label><button type="button" class="text-button">Retirar da configuração</button>`;
@@ -53,5 +89,5 @@ $('group-form').onsubmit=run(async()=>{const id=$('group-id').value;await api('/
 $('groups').onclick=run(async e=>{const button=e.target.closest('button');if(!button)return;const action=['edit','up','down','delete'].find(k=>button.dataset[k]);if(!action)return;const id=Number(button.dataset[action]),g=sap.groups.find(g=>g.id===id);if(action==='edit'){groupEditor(g);$('group-name').focus();return;}if(action==='delete'){if(!confirm(`Excluir o agrupamento “${g.name}”? Os ativos importados serão preservados.`))return;await api('/api/sap/groups/delete',{id});}else{const ids=sap.groups.map(g=>g.id),i=ids.indexOf(id),j=i+(action==='up'?-1:1);if(j<0||j>=ids.length)return;[ids[i],ids[j]]=[ids[j],ids[i]];await api('/api/sap/groups/reorder',{ids});}sap=await api('/api/sap/meta');renderGroups();});
 $('groups').onchange=run(async e=>{if(e.target.dataset.visible){await api('/api/sap/groups/visibility',{id:Number(e.target.dataset.visible),visible:e.target.checked});sap=await api('/api/sap/meta');renderGroups();}});
 window.addEventListener('beforeunload',e=>{if(sourceDirty.size){e.preventDefault();e.returnValue='';}});
-run(async()=>{config=await api('/api/configuration');renderSources();$('tolerance').value=config.tolerance;$('target-line').innerHTML=config.equipment.map(e=>`<option>${esc(e)}</option>`).join('');showTargets();await refreshImportInfo();$('done-user').value=sap.config.done_user.join(' ');$('not-done-user').value=sap.config.not_done_user.join(' ');groupEditor();await pollStops();await pollPlan();})();
+run(async()=>{await loadDatabaseSettings();await loadPlanProfiles();config=await api('/api/configuration');renderSources();$('tolerance').value=config.tolerance;$('target-line').innerHTML=config.equipment.map(e=>`<option>${esc(e)}</option>`).join('');showTargets();await refreshImportInfo();$('done-user').value=sap.config.done_user.join(' ');$('not-done-user').value=sap.config.not_done_user.join(' ');groupEditor();await pollStops();await pollPlan();})();
 })();

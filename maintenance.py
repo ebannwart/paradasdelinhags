@@ -156,17 +156,23 @@ def report(db, equipment, file_ids=None):
         item['partial']=abs(item['calendar_minutes']-full_calendar)>.01
         annual.append(item)
     latest_year=max((int(f['max_date'][:4]) for f in files if f['max_date']),default=None)
-    latest_months=[]
-    if latest_year:
+    monthly_by_year={}
+    years={int(item['period']) for item in annual}
+    if latest_year is not None:
+        years.add(latest_year)
+    for year in sorted(years):
+        months=[]
         for month in range(1,13):
-            period=f'{latest_year}-{month:02d}'
-            item=monthly.get(period) or calculate(period_bucket(period,[],len(members)))
+            period=f'{year}-{month:02d}'
+            item=dict(monthly.get(period) or calculate(period_bucket(period,[],len(members))))
             item['month']=month
-            item['partial']=0 < item['calendar_minutes'] < calendar.monthrange(latest_year,month)[1]*1440*len(members)
-            latest_months.append(item)
+            item['partial']=0 < item['calendar_minutes'] < calendar.monthrange(year,month)[1]*1440*len(members)
+            months.append(item)
+        monthly_by_year[str(year)]=months
+    latest_months=monthly_by_year.get(str(latest_year),[])
     targets={key:None for key in INDICATORS}
     targets.update({r['indicator']:r['value'] for r in db.execute('SELECT indicator,value FROM maintenance_targets WHERE equipment=?',(equipment,))})
-    return {'equipment':equipment,'members':list(members),'line_count':len(members),'files':files,'annual':annual,'monthly':latest_months,'latest_year':latest_year,
+    return {'equipment':equipment,'members':list(members),'line_count':len(members),'files':files,'annual':annual,'monthly':latest_months,'monthly_by_year':monthly_by_year,'latest_year':latest_year,
             'targets':targets,'outside_minutes':outside_minutes,
             'tolerance_minutes':int(db.execute("SELECT value FROM settings WHERE key='tolerance_seconds'").fetchone()[0])/60}
 

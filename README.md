@@ -4,7 +4,7 @@ Aplicação local em Python e Flask para analisar lançamentos de parada e class
 
 ## Iniciar no Windows
 
-**Pacote sem pip na máquina de destino:** baixe `ParadasDeLinha-offline.zip` nos [anexos da Release offline](https://github.com/ebannwart/paradasdelinhags/releases/tag/v1.2.0-offline) e siga [INSTALACAO-OFFLINE.md](INSTALACAO-OFFLINE.md). Usa o Python 3.11+ já instalado e inclui as dependências em `libs`. Os ZIPs automáticos de código-fonte não incluem essas bibliotecas.
+**Pacote sem pip na máquina de destino:** baixe `ParadasDeLinha-offline.zip` nos [anexos da Release offline](https://github.com/ebannwart/paradasdelinhags/releases/tag/v1.3.0-offline) e siga [INSTALACAO-OFFLINE.md](INSTALACAO-OFFLINE.md). Usa o Python 3.11+ já instalado e inclui as dependências em `libs`. Os ZIPs automáticos de código-fonte não incluem essas bibliotecas.
 
 Para transferir a aplicação para outro computador, siga o [guia de instalação](instalacao.md), com comandos para criar o ambiente virtual, instalar bibliotecas, restaurar o backup e criar o inicializador `.bat` no desktop.
 
@@ -24,7 +24,7 @@ O servidor Waitress escuta apenas em `127.0.0.1`. Não há autenticação para a
 
 ### Configurações e pasta Importacao
 
-Use **Configurações** (`/configuracoes`) para administrar as fontes e ajustes da aplicação. A antiga entrada “Arquivos e ajustes” foi substituída por esta rota. A pasta `Importacao` reúne as planilhas anuais de paradas, o ZPMX e as exportações IH06/IP18/IP24/IW39/IW49N. Na primeira configuração, os arquivos reconhecidos são sugeridos e salvos. Novas alterações são mantidas no SQLite e no backup, inclusive caminhos temporariamente ausentes. Reiniciar a aplicação não restaura os valores iniciais.
+Use **Configurações** (`/configuracoes`) para administrar as fontes e ajustes da aplicação. A antiga entrada “Arquivos e ajustes” foi substituída por esta rota. A pasta `Importacao` reúne as planilhas anuais de paradas, o ZPMX e as exportações IH06/IP18/IP24/IW39/IW49N. Na primeira configuração, os arquivos reconhecidos são sugeridos e salvos. Os caminhos são mantidos no perfil local de cada usuário, inclusive quando os arquivos estão temporariamente ausentes. Os dados de gestão ficam no SQLite operacional e no backup. Reiniciar a aplicação não restaura os valores iniciais.
 
 - **Paradas de linha:** lista dos arquivos `.xlsx`, atualização dos dados, tolerância de agrupamento e metas dos KPIs por linha.
 - **Análises de falha:** endereço do ZPMX, atualização das análises e quantidade de ocorrências por página.
@@ -147,8 +147,30 @@ O card **CS — Centro de Serviços** consolida LCI1, LIN1, LCT1G, LPR1, LSL1 e 
 
 ### Plano de ação dos ofensores
 
-Em `/ofensores?aba=acoes`, selecione um ofensor para ver automaticamente as análises e suas ações. O cruzamento usa a linha produtiva mapeada e a data/hora de início da parada de processo no SAP: esse instante deve coincidir com o início ou estar dentro do intervalo [início, fim) de um lançamento ativo classificado no ofensor. Não basta ocorrer no mesmo dia. Paradas que atravessam a meia-noite também são consideradas. O formulário mostra os lançamentos correspondentes para conferência. Se houver lançamentos coincidentes de diferentes ofensores, a análise pode aparecer em ambos; uma nota aparece apenas uma vez por ofensor.
+Em `/ofensores?aba=acoes`, selecione um ofensor para ver automaticamente as análises e suas ações. O cruzamento usa a linha produtiva mapeada e a interseção dos intervalos completos das paradas, incluindo ambas as extremidades. O fim SAP é calculado pelo início mais a duração de processo em horas decimais. Qualquer sobreposição, mesmo de um minuto, ou coincidência entre início e fim gera vínculo. Sem duração SAP, compara-se apenas o instante de início. Não há margem adicional para intervalos separados. Não basta ocorrer no mesmo dia. Paradas que atravessam a meia-noite também são consideradas. O formulário mostra os lançamentos correspondentes para conferência. Se houver lançamentos coincidentes de diferentes ofensores, a análise pode aparecer em ambos; uma nota aparece apenas uma vez por ofensor.
 
 O vínculo automático é recalculado a cada consulta, acompanhando importações, classificações e regras de locais. Sem horário ou sem linha correspondente não há associação automática. A importação ZPMX versão 3 preserva o campo Hora parada processo; versões antigas precisam de reimportação para incorporar horários. Vínculos manuais anteriores são preservados e identificados. Ações vêm da última importação SAP, com responsável, prazo e status. Notas históricas de vínculos manuais são sinalizadas e excluídas do resumo atual.
 
 Use **Editar locais e linhas** (também em Configurações) para relacionar locais SAP ou prefixos às linhas. A regra mais específica prevalece, respeitando segmentos separados por hífen. Regras persistem no SQLite e no backup, inclusive listas vazias; novas importações não as sobrescrevem.
+
+
+### Banco compartilhado e preferências locais
+
+Em **Configurações → Banco de dados e configurações locais**, informe o caminho absoluto do arquivo SQLite (por exemplo, um caminho UNC da pasta de rede). A opção **Criar cópia inicial** usa o backup consistente do SQLite e recusa sobrescrever destinos existentes. Ela preserva os dados de gestão e remove da cópia os caminhos legados de importação. Os outros usuários escolhem **Conectar a banco existente**. A seleção é validada e só entra em vigor após encerrar e iniciar novamente a aplicação; requisições e importações em andamento continuam usando o banco anterior. Faça a primeira cópia sem novas alterações pelos usuários até a conclusão da mudança: alterações posteriores na origem não são sincronizadas com a cópia.
+
+- Banco operacional compartilhado: registros importados, classificação de paradas, ofensores, histórico SAP, medidas e status importados, reuniões mensais, metas, regras de gestão, agrupamentos e mapeamentos de locais/linhas.
+- Perfil local do usuário Windows (`%LOCALAPPDATA%/GovernancaGDM`): `database.json` com o caminho escolhido, `preferences.sqlite3` com fontes de importação e tamanho de página, e `.secret` da sessão. Estado visual do menu permanece no navegador. Esses arquivos locais não integram o backup operacional.
+- Na primeira abertura da instalação antiga, seus caminhos são migrados para o perfil local. As próximas alterações de caminhos não escrevem no banco operacional. Configurações legadas podem continuar na base original por compatibilidade, mas não são utilizadas após a migração local; a cópia inicial não as inclui.
+- Todos precisam usar esta versão, ter acesso de leitura/gravação ao arquivo e à pasta, e configurar os caminhos de importação válidos no próprio computador. Não há contas ou permissões internas por usuário: quem tem acesso ao arquivo pode alterar os dados. A aplicação continua ouvindo apenas em `127.0.0.1`.
+- O banco usa journal **DELETE**, não WAL, com espera de até 60 segundos por bloqueios. As gravações são serializadas; a última edição gravada prevalece. Locks de importação da interface são locais ao processo: coordene importações com um responsável, evitando atualizações concorrentes das mesmas fontes. Feche versões antigas antes da mudança de modo.
+- SQLite em pasta de rede depende da confiabilidade de bloqueios e sincronização do compartilhamento. Não use OneDrive/Dropbox/pastas sincronizadas para o arquivo em uso. Não houve teste no compartilhamento real do usuário. Para concorrência intensa ou maior confiabilidade, use um servidor que acesse SQLite localmente, ou PostgreSQL. Referências: https://www.sqlite.org/useovernet.html e https://www.sqlite.org/wal.html.
+- Se o banco configurado estiver ausente ou inválido na inicialização, a aplicação falha explicitamente: não cria um banco vazio nem retorna silenciosamente ao anterior. Restaure o acesso à rede; para recuperar a configuração, feche a aplicação e corrija o campo `path` de `database.json` (ou remova esse arquivo para voltar ao banco local padrão). Mantenha backups periódicos usando a opção de backup da aplicação.
+
+
+### Múltiplas configurações do Plano Manter
+
+Em **Configurações → Configurações do Plano Manter**, crie uma configuração com nome próprio, selecione-a e informe suas fontes IP18, IW39, IP24, IH06 e IW49N. Salve os caminhos e use **Atualizar plano preventivo**. Uma configuração nova inicia vazia; campos de fonte vazios preservam apenas o que já foi importado naquela mesma configuração.
+
+Na tela **Plano Manter**, o seletor **Origem dos dados do Plano Manter** alterna a configuração consultada. Relatórios, detalhes, exportações, regras de execução e agrupamentos são isolados por configuração; códigos SAP iguais podem coexistir em origens diferentes. A seleção via parâmetro `profile` acompanha as requisições, inclusive a importação em segundo plano, evitando mudança de destino durante a operação. O cadastro de configurações e seus dados pertencem ao banco operacional compartilhado. Os caminhos dos arquivos continuam locais por usuário e por configuração.
+
+A migração preserva os dados anteriores como **Plano atual**, inclusive regras, grupos e suas posições. É possível renomear essa configuração. Importar uma origem não apaga nem substitui as demais. A migração do esquema exige que todos os usuários atualizem a aplicação antes de reabrir o banco compartilhado; versões antigas não devem continuar gravando nele.

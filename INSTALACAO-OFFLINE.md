@@ -99,3 +99,12 @@ O script gera uma pasta nova dentro de `dist` e um ZIP com a aplicação e as de
 5. Inicie a aplicação. Abra **Realização do plano** e revise **Selecionar arquivos SAP**, pois os caminhos do computador anterior podem não existir na empresa.
 
 O módulo SAP e a exportação Excel utilizam as bibliotecas incluídas em `libs`. Sem restaurar o backup, configure os status de execução (por exemplo, EXCT), importe IP18/IW39/IP24/IH06 e crie os agrupamentos. Não é necessário instalar bibliotecas com pip no destino.
+
+
+## Atualização 1.3.0 — banco configurável e múltiplas origens do Plano Manter
+
+Feche a aplicação antes de atualizar. Faça o backup pelo menu e preserve a pasta `data` e o perfil `%LOCALAPPDATA%/GovernancaGDM`. Extraia o novo pacote completo; não substitua apenas o inicializador. Preserve personalizações de `ANACONDA_DIR` e `ANACONDA_ENV` nos arquivos `.bat`. O ZIP não contém banco operacional, senhas de sessão nem preferências pessoais.
+
+O banco operacional anterior é preservado. As configurações de fontes são locais por usuário; o banco pode ser selecionado em Configurações e a troca exige reiniciar a aplicação. Os dados anteriores do Plano Manter passam a integrar a origem **Plano atual**. Novas origens são criadas em Configurações e selecionadas na tela Plano Manter.
+
+Se usar banco compartilhado, todos os usuários devem fechar as versões anteriores e atualizar antes de abrir a nova versão: ela migra o esquema de dados e usa journal DELETE. Não utilize pastas sincronizadas (OneDrive/Dropbox) para acesso simultâneo ao banco. Consulte as limitações e instruções completas no README.

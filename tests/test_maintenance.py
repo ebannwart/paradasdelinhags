@@ -227,3 +227,15 @@ class MaintenanceTests(unittest.TestCase):
         self.assertEqual(month['calendar_minutes'],6*1440)
         self.assertEqual(month['observed_lines'],['LCI1'])
         self.assertTrue(any('1 de 6' in error for error in month['errors']))
+
+    def test_monthly_history_for_each_annual_bar(self):
+        self.load([row(start='2024-02-01 10:00',end='2024-02-01 11:00',minutes=60),
+                   row(start='2026-09-01 10:00',end='2026-09-01 12:00',minutes=120)])
+        data=self.report()
+        self.assertEqual(data['monthly'],data['monthly_by_year']['2026'])
+        self.assertEqual(len(data['monthly_by_year']['2024']),12)
+        self.assertEqual(data['monthly_by_year']['2024'][1]['period'],'2024-02')
+        self.assertEqual(data['monthly_by_year']['2024'][1]['corrective_minutes'],60)
+        self.assertEqual(data['monthly_by_year']['2026'][8]['corrective_minutes'],120)
+        self.assertIsNone(data['monthly_by_year']['2024'][0]['imc'])
+        self.assertTrue(data['monthly_by_year']['2024'][1]['top_stops'])

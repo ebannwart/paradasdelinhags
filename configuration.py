@@ -4,7 +4,7 @@ import re
 import secrets
 from pathlib import Path
 
-from flask import jsonify, render_template, request, session
+from flask import jsonify, render_template, request, session, current_app, has_app_context
 from database import connect, ACTIVE
 from maintenance import LINE_GROUPS
 
@@ -12,10 +12,11 @@ PLAN_KINDS = ('IH06', 'IP18', 'IP24', 'IW39', 'IW49N')
 
 
 def read_sources(db_path):
-    with connect(db_path) as db:
+    with connect(current_app.config['LOCAL_DB_PATH'] if has_app_context() else db_path) as db:
         row = db.execute("SELECT value FROM settings WHERE key='application_sources'").fetchone()
         result = json.loads(row['value']) if row else dict(stops=[], failure='', failure_page_size=15)
-        result['plan'] = dict(db.execute('SELECT kind,path FROM sap_source_choices').fetchall())
+        ident=int(request.args.get('profile',1)) if has_app_context() else 1
+        result['plan'] = dict(db.execute('SELECT kind,path FROM sap_profile_sources WHERE profile_id=?',(ident,)).fetchall())
     return result
 
 
@@ -35,10 +36,15 @@ def initialize_sources(app):
     if not directory.is_dir():
         directory = root
     files = [p for p in directory.glob('*') if p.is_file() and not p.name.startswith('~$')]
-    with connect(app.config['DB_PATH']) as db:
+    with connect(app.config['LOCAL_DB_PATH']) as db:
         if not db.execute("SELECT 1 FROM settings WHERE key='application_sources'").fetchone():
             initial = dict(stops=[str(p.resolve()) for p in sorted(files) if re.fullmatch(r'\d{4}\.xlsx', p.name, re.I)],
                            failure=str((directory / 'ZPMX0072.xls').resolve()), failure_page_size=15)
+            if app.config.get('MIGRATE_LOCAL_SOURCES'):
+                with connect(app.config['DB_PATH']) as legacy:
+                    row=legacy.execute("SELECT value FROM settings WHERE key='application_sources'").fetchone()
+                    if row: initial=json.loads(row[0])
+                    db.executemany('INSERT OR IGNORE INTO sap_source_choices VALUES(?,?)',legacy.execute('SELECT kind,path FROM sap_source_choices').fetchall())
             db.execute('INSERT INTO settings(key,value) VALUES(?,?)', ('application_sources', json.dumps(initial)))
             # Preserve explicitly selected paths. Relocate only missing files found by name.
             saved = dict(db.execute('SELECT kind,path FROM sap_source_choices').fetchall())
@@ -55,6 +61,10 @@ def initialize_sources(app):
 
 def register(app):
     initialize_sources(app)
+    with connect(app.config['LOCAL_DB_PATH']) as db:
+        if not db.execute("SELECT 1 FROM sqlite_master WHERE name='sap_profile_sources'").fetchone():
+            db.execute('CREATE TABLE sap_profile_sources(profile_id INTEGER NOT NULL,kind TEXT NOT NULL,path TEXT NOT NULL,PRIMARY KEY(profile_id,kind))')
+            db.execute('INSERT INTO sap_profile_sources SELECT 1,kind,path FROM sap_source_choices')
     path = app.config['DB_PATH']
 
     @app.get('/configuracoes')
@@ -109,10 +119,13 @@ def register(app):
                 raise ValueError('Use arquivos .xlsx diferentes para cada transação.')
         else:
             raise ValueError('Seção inválida.')
-        with connect(path) as db:
+        with connect(app.config['LOCAL_DB_PATH']) as db:
             db.execute('BEGIN IMMEDIATE')
             if section == 'plan':
-                db.executemany('INSERT OR REPLACE INTO sap_source_choices VALUES(?,?)', values.items())
+                ident=int(request.args.get('profile',1))
+                with connect(path) as shared:
+                    if not shared.execute('SELECT 1 FROM sap_profiles WHERE id=?',(ident,)).fetchone(): raise ValueError('Configuração de plano não encontrada.')
+                db.executemany('INSERT OR REPLACE INTO sap_profile_sources VALUES(?,?,?)', [(ident,k,v) for k,v in values.items()])
             else:
                 saved = json.loads(db.execute("SELECT value FROM settings WHERE key='application_sources'").fetchone()[0])
                 saved[section] = values

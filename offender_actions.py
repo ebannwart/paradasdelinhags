@@ -1,7 +1,7 @@
 """Confirmed offender/notification links; actions always read from SAP snapshots."""
 import json
 import re
-from datetime import datetime
+from datetime import datetime, timedelta
 from flask import jsonify, request
 from database import ACTIVE, connect
 from failure_analysis import action_state, analysis_state, now
@@ -57,9 +57,12 @@ def matching_launches(note, records):
     if not note.get('time') or not note.get('equipment'):
         return []
     instant = datetime.fromisoformat(note['date'] + 'T' + note['time'])
+    # SAP process duration is in decimal hours. Missing duration is a point,
+    # never substitute production duration, which may describe another interval.
+    end = instant + timedelta(hours=note.get('process_duration') or 0)
     return [r for r in records if r['equipment'] == note['equipment'] and
-            (datetime.fromisoformat(r['start']) == instant or
-             datetime.fromisoformat(r['start']) <= instant < datetime.fromisoformat(r['end']))]
+            datetime.fromisoformat(r['start']) <= end and
+            instant <= datetime.fromisoformat(r['end'])]
 
 
 def register(app):
