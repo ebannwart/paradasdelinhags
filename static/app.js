@@ -237,7 +237,7 @@ async function showDetail(id) {
   $('detail-dialog').showModal();
 }
 const maintenanceSpecs = {
-  imc:{title:'IMC',unit:'%',formula:'IMC = [(ME + MM) / tempo calendário] × 100',direction:'max',color:'#147d75'},
+  imc:{title:'IMC',unit:'%',formula:'IMC = [(ME + MM) / tempo calendário] × 100',direction:'max',color:'#4d83ab'},
   dgfm:{title:'DGFM',unit:'%',formula:'DGFM = [1 − (ME + MM + Preventiva) / tempo calendário] × 100',direction:'min',color:'#4d83ab'},
   mtbf:{title:'MTBF',unit:'h',formula:'MTBF = [tempo calendário − (ME + MM)] / eventos com ME ou MM / 60',direction:'min',color:'#8074b3'},
   mttr:{title:'MTTR',unit:'min',formula:'MTTR = (ME + MM) / eventos com ME ou MM',direction:'max',color:'#bd853d'},
